@@ -33,3 +33,17 @@ export async function deleteContact(id: string) {
     data: { isDeleted: true },
   });
 }
+
+export async function fn() {
+  console.log("Hi")
+}
+
+export async function andsy_Fn() {
+  console.log("Hi")
+  console.log("first")
+}
+
+export async function adzdsfxcyFn() {
+  console.log("Hi")
+  console.log("first")
+}

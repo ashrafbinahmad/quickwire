@@ -20,7 +20,14 @@ const CONFIG = {
     forceConsistentCasingInFileNames: true,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
   } as ts.CompilerOptions,
-  watchDebounceMs: 100,
+  watchDebounceMs: 300, // Increased debounce for better performance
+  // Performance optimizations
+  performance: {
+    enableDocGeneration: true, // Can be disabled in development
+    maxFilesToProcess: 1000, // Safety limit
+    enableIncrementalUpdates: true,
+    cacheExpiryMs: 5 * 60 * 1000, // 5 minutes cache
+  },
   // HTTP method mapping based on function name prefixes
   httpMethods: {
     GET: [
@@ -57,6 +64,10 @@ const CONFIG = {
 
 const fileCache = new Map<string, { mtime: number; exports: ModuleExports }>();
 const generatedFiles = new Set<string>();
+const docCache = new Map<string, any>();
+let lastFullScan = 0;
+const backendToGenerated = new Map<string, Set<string>>();
+const deletedFiles = new Set<string>();
 
 function getFileMtime(filePath: string): number {
   try {
@@ -80,6 +91,26 @@ function getCachedExports(filePath: string): ModuleExports | null {
 function setCachedExports(filePath: string, exports: ModuleExports): void {
   const mtime = getFileMtime(filePath);
   fileCache.set(filePath, { mtime, exports });
+}
+
+// Incremental processing for changed files only
+const changedFiles = new Set<string>();
+
+function markFileChanged(filePath: string): void {
+  changedFiles.add(filePath);
+  fileCache.delete(filePath); // Invalidate cache
+  
+  // Also invalidate doc cache since it depends on all files
+  docCache.clear();
+}
+
+function shouldRegenerateEverything(): boolean {
+  const now = Date.now();
+  const timeSinceLastScan = now - lastFullScan;
+  const hasChangedFiles = changedFiles.size > 0;
+  const cacheExpired = timeSinceLastScan > CONFIG.performance.cacheExpiryMs;
+  
+  return hasChangedFiles || cacheExpired || fileCache.size === 0;
 }
 
 // ---------- HTTP Method Detection ----------
@@ -1214,22 +1245,93 @@ function processBackendFile(filePath: string): boolean {
   }
 
   try {
-    const moduleExports = analyzeModuleExports(filePath);
-    if (moduleExports.functions.length > 0) {
-      const endpoints = generateApiRoutesForFile(filePath);
-      generateQuickwireFile(filePath, endpoints);
-      return true;
+    // Remove old generated files for this backend file
+    const oldSet = backendToGenerated.get(filePath);
+    if (oldSet) {
+      for (const oldFile of oldSet) {
+        try {
+          if (fs.existsSync(oldFile)) {
+            fs.unlinkSync(oldFile);
+          }
+          generatedFiles.delete(oldFile);
+        } catch (error) {
+          console.warn(`⚠️ Failed to remove old file ${oldFile}:`, error);
+        }
+      }
+      backendToGenerated.delete(filePath);
     }
+
+    const moduleExports = analyzeModuleExports(filePath);
+    if (moduleExports.functions.length === 0) return false;
+
+    const beforeNew = new Set(generatedFiles);
+
+    const endpoints = generateApiRoutesForFile(filePath);
+    generateQuickwireFile(filePath, endpoints);
+
+    // Collect new generated files for this backend file
+    const newSet = new Set<string>();
+    for (const f of generatedFiles) {
+      if (!beforeNew.has(f)) {
+        newSet.add(f);
+      }
+    }
+
+    if (newSet.size > 0) {
+      backendToGenerated.set(filePath, newSet);
+    }
+
+    return true;
   } catch (error) {
     console.error(`❌ Error processing ${filePath}:`, error);
+    return false;
   }
-
-  return false;
 }
 
 function scanAllBackendFunctions(): void {
-  generatedFiles.clear();
+  const now = Date.now();
+  const isFullRegen = fileCache.size === 0 || (now - lastFullScan > CONFIG.performance.cacheExpiryMs);
+  const hasChanges = changedFiles.size > 0 || deletedFiles.size > 0;
+
+  if (!hasChanges && !isFullRegen) {
+    console.log("⚡ No changes detected, skipping regeneration");
+    return;
+  }
+
+  if (isFullRegen) {
+    generatedFiles.clear();
+    backendToGenerated.clear();
+    if (now - lastFullScan > CONFIG.performance.cacheExpiryMs) {
+      fileCache.clear();
+    }
+  }
+
+  console.log("🔍 Scanning backend functions...");
+  const startTime = Date.now();
+
+  // Handle deletions
+  for (const deletedPath of deletedFiles) {
+    const genSet = backendToGenerated.get(deletedPath);
+    if (genSet) {
+      for (const f of genSet) {
+        try {
+          if (fs.existsSync(f)) {
+            fs.unlinkSync(f);
+            console.log(`🗑️ Removed generated file: ${path.relative(process.cwd(), f)}`);
+          }
+          generatedFiles.delete(f);
+        } catch (error) {
+          console.warn(`⚠️ Failed to remove ${f}:`, error);
+        }
+      }
+      backendToGenerated.delete(deletedPath);
+    }
+    fileCache.delete(deletedPath);
+  }
+  deletedFiles.clear();
+
   let processedCount = 0;
+  let skippedCount = 0;
 
   function walk(dir: string): void {
     if (!fs.existsSync(dir)) return;
@@ -1245,6 +1347,12 @@ function scanAllBackendFunctions(): void {
     for (const entry of entries) {
       const filePath = path.join(dir, entry.name);
 
+      // Safety check to prevent runaway processing
+      if (processedCount + skippedCount > CONFIG.performance.maxFilesToProcess) {
+        console.warn(`⚠️ Reached maximum file limit (${CONFIG.performance.maxFilesToProcess}), stopping scan`);
+        return;
+      }
+
       if (entry.isDirectory()) {
         // Skip common directories that shouldn't be processed
         if (
@@ -1255,45 +1363,73 @@ function scanAllBackendFunctions(): void {
           walk(filePath);
         }
       } else if (entry.isFile()) {
+        if (!isFullRegen && !changedFiles.has(filePath)) {
+          skippedCount++;
+          continue;
+        }
+
         if (processBackendFile(filePath)) {
           processedCount++;
+        } else {
+          skippedCount++;
         }
       }
     }
   }
 
-  console.log("🔍 Scanning backend functions...");
   walk(backendDir);
 
-  // Generate API documentation
-  generateDocumentationFiles();
+  // Generate API documentation only if needed
+  if (CONFIG.performance.enableDocGeneration && 
+      (isFullRegen || hasChanges || docCache.size === 0)) {
+    generateDocumentationFiles();
+  }
 
   // Cleanup orphaned files
   cleanupOrphanedFiles();
 
-  console.log(`✅ Processed ${processedCount} files with exported functions`);
+  const endTime = Date.now();
+  const duration = endTime - startTime;
   
-  // Log HTTP method summary
-  console.log("📊 HTTP Method Summary:");
-  const methodCounts: Record<string, number> = {};
-  generatedFiles.forEach(file => {
-    if (file.includes('api')) {
-      try {
-        const content = fs.readFileSync(file, 'utf-8');
-        const methodMatch = content.match(/export async function (GET|POST|PUT|PATCH|DELETE)/);
-        if (methodMatch) {
-          const method = methodMatch[1];
-          methodCounts[method] = (methodCounts[method] || 0) + 1;
+  console.log(`✅ Processed ${processedCount} files, skipped ${skippedCount} files (${duration}ms)`);
+  
+  // Update tracking variables
+  if (isFullRegen) {
+    lastFullScan = now;
+  }
+  changedFiles.clear();
+  
+  // Log performance metrics
+  if (processedCount > 0) {
+    console.log("📊 Performance Summary:");
+    console.log(`   Cache hits: ${fileCache.size} files`);
+    console.log(`   Processing time: ${duration}ms`);
+    console.log(`   Avg per file: ${Math.round(duration / Math.max(processedCount, 1))}ms`);
+    
+    // Log HTTP method summary
+    const methodCounts: Record<string, number> = {};
+    generatedFiles.forEach(file => {
+      if (file.includes('api') && !file.includes('quickwire-docs')) {
+        try {
+          const content = fs.readFileSync(file, 'utf-8');
+          const methodMatch = content.match(/export async function (GET|POST|PUT|PATCH|DELETE)/);
+          if (methodMatch) {
+            const method = methodMatch[1];
+            methodCounts[method] = (methodCounts[method] || 0) + 1;
+          }
+        } catch (error) {
+          // Ignore read errors
         }
-      } catch (error) {
-        // Ignore read errors
       }
+    });
+    
+    if (Object.keys(methodCounts).length > 0) {
+      console.log("📊 HTTP Method Distribution:");
+      Object.entries(methodCounts).forEach(([method, count]) => {
+        console.log(`   ${method}: ${count} endpoints`);
+      });
     }
-  });
-  
-  Object.entries(methodCounts).forEach(([method, count]) => {
-    console.log(`   ${method}: ${count} endpoints`);
-  });
+  }
 }
 
 // ---------- Watch mode ----------
@@ -1342,18 +1478,20 @@ function runWatch(): void {
   watcher
     .on("add", (filePath) => {
       console.log(`📄 Added: ${path.relative(process.cwd(), filePath)}`);
+      markFileChanged(filePath);
       debouncedScan();
     })
     .on("change", (filePath) => {
       console.log(`📝 Changed: ${path.relative(process.cwd(), filePath)}`);
-      // Invalidate cache for changed file
-      fileCache.delete(filePath);
+      markFileChanged(filePath);
       debouncedScan();
     })
     .on("unlink", (filePath) => {
       console.log(`🗑️ Removed: ${path.relative(process.cwd(), filePath)}`);
-      // Clear cache for removed file
-      fileCache.delete(filePath);
+      if (shouldProcessFile(filePath)) {
+        deletedFiles.add(filePath);
+      }
+      markFileChanged(filePath);
       debouncedScan();
     })
     .on("error", (error) => {
