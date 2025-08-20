@@ -21,6 +21,36 @@ const CONFIG = {
     moduleResolution: ts.ModuleResolutionKind.Bundler,
   } as ts.CompilerOptions,
   watchDebounceMs: 100,
+  // HTTP method mapping based on function name prefixes
+  httpMethods: {
+    GET: [
+      'get', 'fetch', 'find', 'list', 'show', 'read', 'retrieve', 'search', 
+      'query', 'view', 'display', 'load', 'check', 'verify', 'validate',
+      'count', 'exists', 'has', 'is', 'can'
+    ],
+    POST: [
+      'create', 'add', 'insert', 'post', 'submit', 'send', 'upload', 
+      'register', 'login', 'signup', 'authenticate', 'authorize', 'process',
+      'execute', 'run', 'perform', 'handle', 'trigger', 'invoke', 'call',
+      'generate', 'build', 'make', 'produce', 'sync', 'import', 'export'
+    ],
+    PUT: [
+      'update', 'edit', 'modify', 'change', 'set', 'put', 'replace', 
+      'toggle', 'switch', 'enable', 'disable', 'activate', 'deactivate',
+      'publish', 'unpublish', 'approve', 'reject', 'accept', 'decline',
+      'assign', 'unassign', 'move', 'transfer', 'migrate', 'restore',
+      'reset', 'refresh', 'renew', 'reorder', 'sort', 'merge'
+    ],
+    PATCH: [
+      'patch', 'partial', 'increment', 'decrement', 'append', 'prepend',
+      'adjust', 'tweak', 'fine', 'tune'
+    ],
+    DELETE: [
+      'delete', 'remove', 'destroy', 'clear', 'clean', 'purge', 'drop',
+      'erase', 'wipe', 'cancel', 'revoke', 'withdraw', 'uninstall',
+      'detach', 'disconnect', 'unlink', 'archive', 'trash'
+    ]
+  }
 };
 
 // ---------- Performance cache ----------
@@ -50,6 +80,23 @@ function getCachedExports(filePath: string): ModuleExports | null {
 function setCachedExports(filePath: string, exports: ModuleExports): void {
   const mtime = getFileMtime(filePath);
   fileCache.set(filePath, { mtime, exports });
+}
+
+// ---------- HTTP Method Detection ----------
+
+function detectHttpMethod(functionName: string): string {
+  const lowerName = functionName.toLowerCase();
+  
+  for (const [method, prefixes] of Object.entries(CONFIG.httpMethods)) {
+    for (const prefix of prefixes) {
+      if (lowerName.startsWith(prefix)) {
+        return method;
+      }
+    }
+  }
+  
+  // Default to POST for unrecognized patterns
+  return 'POST';
 }
 
 // ---------- Utility functions ----------
@@ -90,6 +137,7 @@ interface ExportedFunction {
   parameters: { name: string; type: string; optional?: boolean }[];
   returnType?: string;
   isAsync?: boolean;
+  httpMethod?: string;
   node: ts.Node;
 }
 
@@ -139,9 +187,15 @@ function analyzeModuleExports(filePath: string): ModuleExports {
 
       if (hasExportModifier(node)) {
         if (ts.isFunctionDeclaration(node) && node.name) {
-          functions.push(analyzeFunctionDeclaration(node));
+          const func = analyzeFunctionDeclaration(node);
+          func.httpMethod = detectHttpMethod(func.name);
+          functions.push(func);
         } else if (ts.isVariableStatement(node)) {
-          functions.push(...analyzeVariableStatement(node));
+          const funcs = analyzeVariableStatement(node);
+          funcs.forEach(func => {
+            func.httpMethod = detectHttpMethod(func.name);
+          });
+          functions.push(...funcs);
         } else {
           const exportedType = analyzeTypeDeclaration(node);
           if (exportedType) types.push(exportedType);
@@ -342,30 +396,81 @@ function ensureQuickwireUtils(): void {
   if (!fs.existsSync(requestFile)) {
     const requestContent = `export async function makeQuickwireRequest<T>(
   endpoint: string, 
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST',
   params?: any
 ): Promise<T> {
   try {
+    let requestBody: string | undefined;
+
+    // All methods send parameters in request body if params exist
+    if (params) {
+      requestBody = JSON.stringify(params);
+    }
+
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+    };
+
+    // Add Content-Type when sending a body
+    if (requestBody) {
+      headers["Content-Type"] = "application/json";
+    }
+
     const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: params ? JSON.stringify(params) : undefined,
+      method,
+      headers,
+      body: requestBody,
     });
     
     if (!res.ok) {
       let errorMessage = \`HTTP \${res.status}: \${res.statusText}\`;
+      let errorDetails: any = null;
+      
       try {
-        const errorData = await res.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch {
-        // Fallback to status text if JSON parsing fails
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await res.json();
+          errorDetails = errorData;
+          errorMessage = errorData.error || errorData.message || errorData.detail || errorMessage;
+        } else {
+          const textError = await res.text();
+          if (textError) {
+            errorMessage = textError;
+          }
+        }
+      } catch (parseError) {
+        // Fallback to status text if parsing fails
+        console.warn('Failed to parse error response:', parseError);
       }
-      throw new Error(errorMessage);
+      
+      const error = new Error(errorMessage) as Error & { 
+        status: number; 
+        statusText: string; 
+        details?: any; 
+      };
+      error.status = res.status;
+      error.statusText = res.statusText;
+      if (errorDetails) {
+        error.details = errorDetails;
+      }
+      
+      throw error;
     }
     
-    return await res.json();
+    // Handle different response types
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await res.json();
+    } else if (contentType && contentType.startsWith('text/')) {
+      return await res.text() as unknown as T;
+    } else {
+      // For other content types, try JSON first, then text
+      try {
+        return await res.json();
+      } catch {
+        return await res.text() as unknown as T;
+      }
+    }
   } catch (error) {
     if (error instanceof Error) {
       throw error;
@@ -376,6 +481,7 @@ function ensureQuickwireUtils(): void {
 
 export type QuickwireFunction<TParams = void, TReturn = any> = {
   endpoint: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   call: TParams extends void 
     ? () => Promise<TReturn>
     : (params: TParams) => Promise<TReturn>;
@@ -391,7 +497,7 @@ export type QuickwireFunction<TParams = void, TReturn = any> = {
 
 function generateQuickwireFile(
   filePath: string,
-  endpoints: Record<string, string>
+  endpoints: Record<string, { route: string; method: string }>
 ): void {
   ensureQuickwireUtils();
 
@@ -445,8 +551,11 @@ function generateQuickwireFile(
 
   // Generate function exports
   moduleExports.functions.forEach((func) => {
-    let route = endpoints[func.name];
-    if (!route) return;
+    const endpointInfo = endpoints[func.name];
+    if (!endpointInfo) return;
+
+    let route = endpointInfo.route;
+    const method = endpointInfo.method;
 
     // Ensure /api prefix
     if (!route.startsWith("/api")) {
@@ -459,7 +568,7 @@ function generateQuickwireFile(
       // No parameters
       lines.push(`export const ${func.name} = () =>`);
       lines.push(
-        `  makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>("${route}");`
+        `  makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>("${route}", "${method}");`
       );
     } else {
       // Has parameters - generate flexible signature
@@ -476,7 +585,7 @@ function generateQuickwireFile(
         : (signature.parameterUsage || "params");
 
       lines.push(
-        `  makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>("${route}", ${paramUsage});`
+        `  makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>("${route}", "${method}", ${paramUsage});`
       );
     }
 
@@ -497,15 +606,16 @@ function generateQuickwireFile(
 
 // ---------- API route generation ----------
 
-function generateApiRoutesForFile(filePath: string): Record<string, string> {
+function generateApiRoutesForFile(filePath: string): Record<string, { route: string; method: string }> {
   const relativePath = sanitizeFilePath(path.relative(backendDir, filePath));
   const moduleExports = analyzeModuleExports(filePath);
-  const endpoints: Record<string, string> = {};
+  const endpoints: Record<string, { route: string; method: string }> = {};
 
   moduleExports.functions.forEach((func) => {
     // Route is just based on backend path, no /api prefix
     const route = `/${relativePath.replace(/\.[tj]s$/, "")}/${pascalToKebab(func.name)}`;
-    endpoints[func.name] = route;
+    const method = func.httpMethod || 'POST';
+    endpoints[func.name] = { route, method };
 
     const apiFilePath = path.join(apiDir, route, CONFIG.apiRouteTemplate);
     const apiDirPath = path.dirname(apiFilePath);
@@ -521,19 +631,43 @@ function generateApiRoutesForFile(filePath: string): Record<string, string> {
       
       if (!hasParams) {
         functionCall = `${func.name}()`;
-      } else if (func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])) {
-        // Single non-object parameter - handle both calling styles
-        const param = func.parameters[0];
-        parameterHandling = `const body = await req.json();
-    // Support both direct value and object-wrapped parameter styles
-    const ${param.name} = typeof body === 'object' && '${param.name}' in body ? body.${param.name} : body;`;
-        functionCall = `${func.name}(${param.name})`;
       } else {
-        // Multiple parameters or single object parameter
-        parameterHandling = `const body = await req.json();`;
-        functionCall = func.parameters.length === 1 
-          ? `${func.name}(body)` 
-          : `${func.name}(body)`;
+        // All methods handle parameters the same way - from request body
+        if (func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])) {
+          const param = func.parameters[0];
+          parameterHandling = `let body;
+    try {
+      const contentType = req.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        body = await req.json();
+      } else {
+        const textBody = await req.text();
+        body = textBody ? JSON.parse(textBody) : {};
+      }
+    } catch (error) {
+      body = {};
+    }
+    
+    // Support both direct value and object-wrapped parameter styles
+    const ${param.name} = typeof body === 'object' && body !== null && '${param.name}' in body ? body.${param.name} : body;`;
+          functionCall = `${func.name}(${param.name})`;
+        } else {
+          parameterHandling = `let body;
+    try {
+      const contentType = req.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        body = await req.json();
+      } else {
+        const textBody = await req.text();
+        body = textBody ? JSON.parse(textBody) : {};
+      }
+    } catch (error) {
+      body = {};
+    }`;
+          functionCall = func.parameters.length === 1 
+            ? `${func.name}(body)` 
+            : `${func.name}(body)`;
+        }
       }
 
       const handlerCode = `import { ${func.name} } from "@/backend/${relativePath.replace(
@@ -542,7 +676,7 @@ function generateApiRoutesForFile(filePath: string): Record<string, string> {
       )}";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function ${method}(req: Request) {
   try {
     ${parameterHandling}
     const result = ${func.isAsync ? "await " : ""}${functionCall};
@@ -567,7 +701,457 @@ export async function POST(req: Request) {
   return endpoints;
 }
 
-// ---------- Cleanup utilities ----------
+// ---------- Documentation generation ----------
+
+interface ApiEndpointDoc {
+  path: string;
+  method: string;
+  summary: string;
+  description: string;
+  tags: string[];
+  parameters?: any[];
+  requestBody?: any;
+  responses: any;
+  operationId: string;
+}
+
+function generateParameterSchema(parameters: ExportedFunction["parameters"]): any {
+  if (parameters.length === 0) {
+    return null;
+  }
+
+  if (parameters.length === 1) {
+    const param = parameters[0];
+    if (isObjectDestructured(param)) {
+      // Parse object type to extract properties
+      return parseTypeToSchema(param.type);
+    }
+    
+    // Single parameter - support both direct and wrapped styles
+    const directSchema = parseTypeToSchema(param.type);
+    const wrappedSchema = {
+      type: "object",
+      properties: {
+        [param.name]: directSchema
+      },
+      required: param.optional ? [] : [param.name]
+    };
+
+    return {
+      oneOf: [
+        directSchema,
+        wrappedSchema
+      ]
+    };
+  }
+
+  // Multiple parameters - object style only
+  const properties: any = {};
+  const required: string[] = [];
+
+  parameters.forEach(param => {
+    properties[param.name] = parseTypeToSchema(param.type);
+    if (!param.optional) {
+      required.push(param.name);
+    }
+  });
+
+  return {
+    type: "object",
+    properties,
+    required: required.length > 0 ? required : undefined
+  };
+}
+
+function parseTypeToSchema(typeStr: string): any {
+  // Remove whitespace
+  const type = typeStr.trim();
+
+  // Handle basic types
+  if (type === 'string') return { type: 'string' };
+  if (type === 'number') return { type: 'number' };
+  if (type === 'boolean') return { type: 'boolean' };
+  if (type === 'any') return {};
+  if (type === 'unknown') return {};
+  if (type === 'void') return null;
+
+  // Handle arrays
+  if (type.endsWith('[]')) {
+    const itemType = type.slice(0, -2);
+    return {
+      type: 'array',
+      items: parseTypeToSchema(itemType)
+    };
+  }
+
+  // Handle Array<T>
+  const arrayMatch = type.match(/^Array<(.+)>$/);
+  if (arrayMatch) {
+    return {
+      type: 'array',
+      items: parseTypeToSchema(arrayMatch[1])
+    };
+  }
+
+  // Handle Promise<T>
+  const promiseMatch = type.match(/^Promise<(.+)>$/);
+  if (promiseMatch) {
+    return parseTypeToSchema(promiseMatch[1]);
+  }
+
+  // Handle union types (basic support)
+  if (type.includes('|')) {
+    const unionTypes = type.split('|').map(t => t.trim());
+    return {
+      oneOf: unionTypes.map(t => parseTypeToSchema(t))
+    };
+  }
+
+  // Handle object types
+  if (type.startsWith('{') && type.endsWith('}')) {
+    const properties: any = {};
+    const required: string[] = [];
+    
+    // Simple parsing of object type
+    const content = type.slice(1, -1).trim();
+    if (content) {
+      // Split by semicolon or comma, handling nested objects
+      const props = splitObjectProperties(content);
+      
+      props.forEach(prop => {
+        const colonIndex = prop.indexOf(':');
+        if (colonIndex > 0) {
+          let key = prop.substring(0, colonIndex).trim();
+          const optional = key.endsWith('?');
+          if (optional) {
+            key = key.slice(0, -1).trim();
+          }
+          const valueType = prop.substring(colonIndex + 1).trim();
+          
+          properties[key] = parseTypeToSchema(valueType);
+          if (!optional) {
+            required.push(key);
+          }
+        }
+      });
+    }
+
+    return {
+      type: 'object',
+      properties,
+      required: required.length > 0 ? required : undefined
+    };
+  }
+
+  // For custom types or unknown types, return a generic object
+  return { 
+    type: 'object',
+    description: `Custom type: ${type}`
+  };
+}
+
+function splitObjectProperties(content: string): string[] {
+  const props: string[] = [];
+  let current = '';
+  let braceCount = 0;
+  let inString = false;
+  let stringChar = '';
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    
+    if (!inString && (char === '"' || char === "'")) {
+      inString = true;
+      stringChar = char;
+    } else if (inString && char === stringChar && content[i-1] !== '\\') {
+      inString = false;
+    } else if (!inString) {
+      if (char === '{') braceCount++;
+      else if (char === '}') braceCount--;
+      else if ((char === ';' || char === ',') && braceCount === 0) {
+        if (current.trim()) props.push(current.trim());
+        current = '';
+        continue;
+      }
+    }
+    
+    current += char;
+  }
+  
+  if (current.trim()) props.push(current.trim());
+  return props;
+}
+
+function generateFunctionTags(filePath: string, functionName: string): string[] {
+  const relativePath = sanitizeFilePath(path.relative(backendDir, filePath));
+  const pathParts = relativePath.replace(/\.[tj]s$/, '').split('/');
+  return pathParts.map(part => part.charAt(0).toUpperCase() + part.slice(1));
+}
+
+function generateFunctionSummary(functionName: string, httpMethod: string): string {
+  const methodActions: Record<string, string> = {
+    GET: 'Retrieve',
+    POST: 'Create or process',
+    PUT: 'Update or replace',
+    PATCH: 'Partially update',
+    DELETE: 'Delete or remove'
+  };
+  
+  const action = methodActions[httpMethod] || 'Execute';
+  const readableName = functionName
+    .replace(/([A-Z])/g, ' $1')
+    .toLowerCase()
+    .trim();
+  
+  return `${action} ${readableName}`;
+}
+
+function generateApiDocumentation(): any {
+  const docs: ApiEndpointDoc[] = [];
+  
+  function walkDir(dir: string): void {
+    if (!fs.existsSync(dir)) return;
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const filePath = path.join(dir, entry.name);
+      
+      if (entry.isDirectory()) {
+        if (!["node_modules", ".git", ".next", "dist", "build"].includes(entry.name)) {
+          walkDir(filePath);
+        }
+      } else if (entry.isFile() && shouldProcessFile(filePath)) {
+        const moduleExports = analyzeModuleExports(filePath);
+        const relativePath = sanitizeFilePath(path.relative(backendDir, filePath));
+        
+        moduleExports.functions.forEach(func => {
+          const route = `/${relativePath.replace(/\.[tj]s$/, "")}/${pascalToKebab(func.name)}`;
+          const method = func.httpMethod || 'POST';
+          const apiPath = `/api${route}`;
+          
+          const requestBodySchema = generateParameterSchema(func.parameters);
+          const tags = generateFunctionTags(filePath, func.name);
+          const summary = generateFunctionSummary(func.name, method);
+          
+          const doc: ApiEndpointDoc = {
+            path: apiPath,
+            method: method.toLowerCase(),
+            summary,
+            description: `${summary} - Auto-generated from ${relativePath}`,
+            tags,
+            operationId: `${func.name}`,
+            responses: {
+              "200": {
+                description: "Successful response",
+                content: {
+                  "application/json": {
+                    schema: func.returnType ? parseTypeToSchema(func.returnType) : { type: "object" }
+                  }
+                }
+              },
+              "400": {
+                description: "Bad Request",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        error: { type: "string" }
+                      }
+                    }
+                  }
+                }
+              },
+              "500": {
+                description: "Internal Server Error",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        error: { type: "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          };
+
+          if (requestBodySchema) {
+            doc.requestBody = {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: requestBodySchema
+                }
+              }
+            };
+          }
+
+          docs.push(doc);
+        });
+      }
+    }
+  }
+
+  walkDir(backendDir);
+
+  // Generate OpenAPI specification
+  const openApiSpec = {
+    openapi: "3.0.0",
+    info: {
+      title: "Quickwire API Documentation",
+      description: "Auto-generated API documentation for Quickwire endpoints",
+      version: "1.0.0",
+      contact: {
+        name: "Quickwire Generator",
+      }
+    },
+    servers: [
+      {
+        url: process.env.NODE_ENV === 'production' ? 'https://your-domain.com' : 'http://localhost:3000',
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server'
+      }
+    ],
+    paths: {} as any,
+    tags: [] as any[]
+  };
+
+  // Group endpoints by tags and build paths
+  const tagSet = new Set<string>();
+  
+  docs.forEach(doc => {
+    // Add to paths
+    if (!openApiSpec.paths[doc.path]) {
+      openApiSpec.paths[doc.path] = {};
+    }
+    
+    openApiSpec.paths[doc.path][doc.method] = {
+      summary: doc.summary,
+      description: doc.description,
+      tags: doc.tags,
+      operationId: doc.operationId,
+      requestBody: doc.requestBody,
+      responses: doc.responses
+    };
+
+    // Collect tags
+    doc.tags.forEach(tag => tagSet.add(tag));
+  });
+
+  // Add tags to spec
+  openApiSpec.tags = Array.from(tagSet).map(tag => ({
+    name: tag,
+    description: `Operations for ${tag}`
+  }));
+
+  return openApiSpec;
+}
+
+function generateDocumentationFiles(): void {
+  const apiDocSpec = generateApiDocumentation();
+  
+  // Create docs directory
+  const docsDir = path.join(apiDir, "quickwire-docs");
+  fs.mkdirSync(docsDir, { recursive: true });
+  
+  // Generate API route for serving the docs
+  const docsRouteFile = path.join(docsDir, "route.ts");
+  const docsRouteContent = `import { NextResponse } from "next/server";
+
+const openApiSpec = ${JSON.stringify(apiDocSpec, null, 2)};
+
+export async function GET() {
+  const html = \`<!DOCTYPE html>
+<html>
+  <head>
+    <title>Quickwire API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.10.3/swagger-ui.css" />
+    <style>
+      body { 
+        margin: 0; 
+        padding: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .swagger-ui .topbar { display: none; }
+      .swagger-ui .info { margin: 20px 0; }
+      .swagger-ui .info .title { 
+        font-size: 2.5rem; 
+        color: #3b4151;
+      }
+      .swagger-ui .scheme-container {
+        background: #f7f7f7;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.3/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.3/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.onload = function() {
+        SwaggerUIBundle({
+          url: '/api/quickwire-docs/spec',
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [
+            SwaggerUIBundle.presets.apis,
+            SwaggerUIStandalonePreset
+          ],
+          plugins: [
+            SwaggerUIBundle.plugins.DownloadUrl
+          ],
+          layout: "StandaloneLayout",
+          tryItOutEnabled: true,
+          requestInterceptor: function(req) {
+            // Add any custom headers or modifications here
+            req.headers['Accept'] = 'application/json';
+            return req;
+          },
+          onComplete: function() {
+            console.log('Quickwire API Documentation loaded successfully');
+          }
+        });
+      };
+    </script>
+  </body>
+</html>\`;
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html',
+    },
+  });
+}
+`;
+
+  fs.writeFileSync(docsRouteFile, docsRouteContent, "utf8");
+  generatedFiles.add(docsRouteFile);
+
+  // Generate spec endpoint
+  const specDir = path.join(docsDir, "spec");
+  fs.mkdirSync(specDir, { recursive: true });
+  
+  const specRouteFile = path.join(specDir, "route.ts");
+  const specRouteContent = `import { NextResponse } from "next/server";
+
+const openApiSpec = ${JSON.stringify(apiDocSpec, null, 2)};
+
+export async function GET() {
+  return NextResponse.json(openApiSpec);
+}
+`;
+
+  fs.writeFileSync(specRouteFile, specRouteContent, "utf8");
+  generatedFiles.add(specRouteFile);
+
+  console.log("📚 Generated API documentation at /api/quickwire-docs");
+}
 
 function cleanupOrphanedFiles(): void {
   const cleanupDirs = [quickwireDir, apiDir];
@@ -681,10 +1265,35 @@ function scanAllBackendFunctions(): void {
   console.log("🔍 Scanning backend functions...");
   walk(backendDir);
 
+  // Generate API documentation
+  generateDocumentationFiles();
+
   // Cleanup orphaned files
   cleanupOrphanedFiles();
 
   console.log(`✅ Processed ${processedCount} files with exported functions`);
+  
+  // Log HTTP method summary
+  console.log("📊 HTTP Method Summary:");
+  const methodCounts: Record<string, number> = {};
+  generatedFiles.forEach(file => {
+    if (file.includes('api')) {
+      try {
+        const content = fs.readFileSync(file, 'utf-8');
+        const methodMatch = content.match(/export async function (GET|POST|PUT|PATCH|DELETE)/);
+        if (methodMatch) {
+          const method = methodMatch[1];
+          methodCounts[method] = (methodCounts[method] || 0) + 1;
+        }
+      } catch (error) {
+        // Ignore read errors
+      }
+    }
+  });
+  
+  Object.entries(methodCounts).forEach(([method, count]) => {
+    console.log(`   ${method}: ${count} endpoints`);
+  });
 }
 
 // ---------- Watch mode ----------
@@ -705,6 +1314,10 @@ function debouncedScan(): void {
 function runWatch(): void {
   console.log("🚀 Quickwire watch mode started...");
   console.log(`📂 Watching: ${backendDir}`);
+  console.log("🔧 HTTP Method Detection Enabled:");
+  Object.entries(CONFIG.httpMethods).forEach(([method, prefixes]) => {
+    console.log(`   ${method}: ${prefixes.slice(0, 5).join(', ')}${prefixes.length > 5 ? ', ...' : ''}`);
+  });
 
   // Initial scan
   scanAllBackendFunctions();

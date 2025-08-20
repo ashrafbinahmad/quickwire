@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { listContacts, addContact, deleteContact } from "quickwire/contact";
 import { log, sayHello } from "quickwire/log";
+import { sayFile } from "quickwire/inner/moreinner/file";
 
 interface Contact {
   name: string;
@@ -41,7 +42,7 @@ export default function ContactsPage() {
   return (
     <div className="p-8">
       <button onClick={() => log({str: "Hi........"})}>Log</button>
-      <button onClick={sayHello}>Say hello</button>
+      <button onClick={sayFile}>Say File</button>
       <button onClick={fetchContacts}>reload</button>
       <h1 className="text-2xl font-bold mb-4">Contacts</h1>
 
