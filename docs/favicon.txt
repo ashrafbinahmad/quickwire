@@ -1,0 +1,14 @@
+# Favicon Placeholder
+
+This is a placeholder for favicon.ico. To add a proper favicon:
+
+1. Create a 32x32 pixel icon in ICO format
+2. Name it favicon.ico
+3. Replace this file
+
+You can use online tools like:
+- https://favicon.io/
+- https://www.favicon-generator.org/
+- https://realfavicongenerator.net/
+
+For now, the site will use a default favicon or no favicon.

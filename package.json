@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "quickwire": "tsx scripts/quickwiredev.ts --watch",
+    "quickwire": "quickwire --watch",
     "nextdev": "next dev --turbo",
     "dev": "turbo run quickwire nextdev --parallel",
-    "prebuild": "tsx scripts/quickwiredev.ts",
+    "prebuild": "quickwire",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -19,6 +19,7 @@
     "concurrently": "^9.2.0",
     "next": "15.4.6",
     "prisma": "^6.14.0",
+    "quickwire": "^0.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tsx": "^4.20.4",

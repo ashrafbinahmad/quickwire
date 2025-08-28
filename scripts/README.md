@@ -23,7 +23,7 @@ Update your `package.json`:
     "nextdev": "next dev --turbopack",
     "dev": "turbo run quickwire nextdev --parallel",
     "prebuild": "quickwire",
-    "build": "next build --turbopack"
+    "build": "next build"
   },
 }
 ```
@@ -120,6 +120,7 @@ Quickwire automatically generates:
 - ✅ TypeScript client functions in `quickwired/`
 - ✅ Full type safety and error handling
 - ✅ HTTP method detection (GET/POST/PUT/DELETE)
+- ✅ **API documentation at `/api/quickwire-docs`**
 
 ## 🔧 Configuration
 
@@ -183,6 +184,20 @@ Optional `quickwire.config.json` in your scripts directory:
 - **`performance`**: Performance optimization settings
 - **`httpMethods`**: Function name patterns for HTTP method detection
 
+### 📚 API Documentation
+
+Quickwire automatically generates API documentation accessible at:
+
+```
+/api/quickwire-docs
+```
+
+This endpoint provides comprehensive documentation of all your generated API routes, including:
+- 📋 Function signatures and parameters
+- 🔍 HTTP methods and endpoints
+- 📝 Type definitions
+- 🚀 Usage examples
+
 ## 🚀 Quick Start
 
 ```bash
@@ -193,7 +208,7 @@ npm --version
 npm install -g npm@latest
 
 # 3. Install packages
-npm install quickwire --save-dev
+npm install quickwire turbo --save-dev
 
 # 4. Update package.json scripts (see above)
 

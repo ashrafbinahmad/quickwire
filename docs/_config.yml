@@ -1,0 +1,27 @@
+# GitHub Pages Configuration
+
+# Enable GitHub Pages
+source: docs/
+
+# Build settings
+plugins:
+  - jekyll-sitemap
+  - jekyll-feed
+
+# Site settings
+title: "Quickwire Documentation"
+description: "Automatic API Generator for Next.js Applications"
+url: "https://quickwire.github.io"
+baseurl: ""
+
+# Markdown settings
+markdown: kramdown
+highlighter: rouge
+
+# Exclude files from build
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor

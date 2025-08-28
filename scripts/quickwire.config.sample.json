@@ -1,0 +1,44 @@
+{
+  "backendDir": "src/backend",
+  "apiDir": "src/app/api/(quickwired)",
+  "quickwireDir": "quickwired",
+  "supportedExtensions": [".ts", ".js"],
+  "apiRouteTemplate": "route.ts",
+  "excludePatterns": ["*.test.ts", "*.spec.ts", "*.d.ts", "node_modules", ".git"],
+  "watchDebounceMs": 300,
+  "performance": {
+    "enableDocGeneration": true,
+    "maxFilesToProcess": 1000,
+    "enableIncrementalUpdates": true,
+    "cacheExpiryMs": 1800000
+  },
+  "httpMethods": {
+    "GET": [
+      "get", "fetch", "find", "list", "show", "read", "retrieve", "search",
+      "query", "view", "display", "load", "check", "verify", "validate",
+      "count", "exists", "has", "is", "can"
+    ],
+    "POST": [
+      "create", "add", "insert", "post", "submit", "send", "upload",
+      "register", "login", "signup", "authenticate", "authorize", "process",
+      "execute", "run", "perform", "handle", "trigger", "invoke", "call",
+      "generate", "build", "make", "produce", "sync", "import", "export"
+    ],
+    "PUT": [
+      "update", "edit", "modify", "change", "set", "put", "replace",
+      "toggle", "switch", "enable", "disable", "activate", "deactivate",
+      "publish", "unpublish", "approve", "reject", "accept", "decline",
+      "assign", "unassign", "move", "transfer", "migrate", "restore",
+      "reset", "refresh", "renew", "reorder", "sort", "merge"
+    ],
+    "PATCH": [
+      "patch", "partial", "increment", "decrement", "append", "prepend",
+      "adjust", "tweak", "fine", "tune"
+    ],
+    "DELETE": [
+      "delete", "remove", "destroy", "clear", "clean", "purge", "drop",
+      "erase", "wipe", "cancel", "revoke", "withdraw", "uninstall",
+      "detach", "disconnect", "unlink", "archive", "trash"
+    ]
+  }
+}

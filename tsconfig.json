@@ -23,12 +23,15 @@
       }
     ],
     "paths": {
+      "quickwired/*": [
+        "./quickwired/*"
+      ],
       "quickwire/*": [
-        "./quickwire/*"
+        "./scripts/*"
       ],
       "@/*": [
         "./src/*"
-      ],
+      ]
     }
   },
   "include": [
@@ -39,6 +42,6 @@
     "quickwire"
   ],
   "exclude": [
-    "node_modules",
+    "node_modules"
   ]
 }

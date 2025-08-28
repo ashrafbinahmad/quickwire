@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  font-family: 'Inter', sans-serif;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #111827;
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Improved syntax highlighting container */
+.react-syntax-highlighter {
+  border-radius: 12px !important;
+  font-size: 16px !important;
+  line-height: 1.5 !important;
+  background: #000000 !important;
+}
+
+/* Force all code line backgrounds to be black with maximum specificity */
+.react-syntax-highlighter,
+.react-syntax-highlighter *,
+.react-syntax-highlighter code,
+.react-syntax-highlighter pre,
+.react-syntax-highlighter .token-line,
+.react-syntax-highlighter .code-line,
+.react-syntax-highlighter span,
+.react-syntax-highlighter div,
+.react-syntax-highlighter [style*="background"],
+.react-syntax-highlighter [class*="line"],
+code[class*="language-"],
+pre[class*="language-"],
+.prism-code,
+.token-line {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+/* Override oneDark theme backgrounds specifically */
+.react-syntax-highlighter .token {
+  background: transparent !important;
+}
+
+/* Force container backgrounds */
+.react-syntax-highlighter > code,
+.react-syntax-highlighter > pre {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+/* Additional specificity for stubborn elements */
+body .react-syntax-highlighter,
+body .react-syntax-highlighter *,
+body .react-syntax-highlighter code,
+body .react-syntax-highlighter pre {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+/* Focus states */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}

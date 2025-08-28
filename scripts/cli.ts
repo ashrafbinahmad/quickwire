@@ -1,13 +1,47 @@
+#!/usr/bin/env node
+
 import fs from "fs";
 import path from "path";
 import chokidar from "chokidar";
 import { CONFIG } from "./config";
-import { markFileChanged, processBackendFile, scanAllBackendFunctions, deletedFiles } from "./generator";
+import { markFileChanged, scanAllBackendFunctions } from "./generator";
 import { shouldProcessFile } from "./utils/utils";
 
-const backendDir = CONFIG.backendDir;
-const apiDir = CONFIG.apiDir;
-const quickwireDir = CONFIG.quickwireDir;
+const args = process.argv.slice(2);
+const isWatchMode = args.includes("--watch") || args.includes("-w");
+const isVersionMode = args.includes("--version") || args.includes("-v");
+const isHelpMode = args.includes("--help") || args.includes("-h");
+
+if (isVersionMode) {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"));
+  console.log(`quickwire v${packageJson.version}`);
+  process.exit(0);
+}
+
+if (isHelpMode) {
+  console.log(`
+🚀 Quickwire - Automatic API Generator for Next.js
+
+Usage:
+  quickwire [options]
+
+Options:
+  --watch, -w      Watch for file changes and regenerate automatically
+  --version, -v    Show version number
+  --help, -h       Show this help message
+
+Examples:
+  quickwire                 # Generate API routes once
+  quickwire --watch         # Watch for changes and regenerate
+  quickwire -w              # Short form of watch mode
+
+Configuration:
+  Place a quickwire.config.json file in your scripts/ directory to customize settings.
+
+For more information, visit: https://github.com/quickwire/quickwire
+  `);
+  process.exit(0);
+}
 
 let watchTimeout: NodeJS.Timeout | null = null;
 
@@ -24,7 +58,7 @@ function debouncedScan(): void {
 
 function runWatch(): void {
   console.log("🚀 Quickwire watch mode started...");
-  console.log(`📂 Watching: ${backendDir}`);
+  console.log(`📂 Watching: ${CONFIG.backendDir}`);
   console.log("🔧 HTTP Method Detection Enabled:");
   Object.entries(CONFIG.httpMethods).forEach(([method, prefixes]) => {
     console.log(`   ${method}: ${prefixes.slice(0, 5).join(', ')}${prefixes.length > 5 ? ', ...' : ''}`);
@@ -34,7 +68,7 @@ function runWatch(): void {
   console.log("🔍 Performing initial scan...");
   scanAllBackendFunctions();
 
-  const watcher = chokidar.watch(backendDir, {
+  const watcher = chokidar.watch(CONFIG.backendDir, {
     ignoreInitial: true,
     ignored: [
       ...CONFIG.excludePatterns.map((p) => `**/${p}`),
@@ -65,9 +99,9 @@ function runWatch(): void {
     .on("unlink", (filePath) => {
       console.log(`🗑️ Removed: ${path.relative(process.cwd(), filePath)}`);
       if (shouldProcessFile(filePath, CONFIG)) {
-        deletedFiles.add(filePath);
+        // Handle file deletion
+        markFileChanged(filePath);
       }
-      markFileChanged(filePath);
       debouncedScan();
     })
     .on("error", (error) => {
@@ -91,11 +125,11 @@ function runWatch(): void {
 function main(): void {
   try {
     // Ensure directories exist
-    fs.mkdirSync(backendDir, { recursive: true });
-    fs.mkdirSync(apiDir, { recursive: true });
-    fs.mkdirSync(quickwireDir, { recursive: true });
+    fs.mkdirSync(CONFIG.backendDir, { recursive: true });
+    fs.mkdirSync(CONFIG.apiDir, { recursive: true });
+    fs.mkdirSync(CONFIG.quickwireDir, { recursive: true });
 
-    if (process.argv.includes("--watch")) {
+    if (isWatchMode) {
       runWatch();
     } else {
       console.log("🔧 Running Quickwire generation...");

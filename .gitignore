@@ -10,7 +10,7 @@
 !.yarn/releases
 !.yarn/versions
 .turbo
-/quickwire
+/quickwired
 /src/app/api/(quickwired)
 
 # testing
@@ -47,3 +47,5 @@ next-env.d.ts
 # /src/app/api/quickwired
 
 /src/generated/prisma
+dist
+node_modules
