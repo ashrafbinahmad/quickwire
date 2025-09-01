@@ -7,7 +7,7 @@ import {
   Clock, Target, Sparkles, ArrowRight, Copy, Check
 } from 'lucide-react';
 
-// Custom dark theme
+
 const customOneDark = {
   ...oneDark,
   'pre[class*="language-"]': { ...oneDark['pre[class*="language-"]'], background: '#000000' },
