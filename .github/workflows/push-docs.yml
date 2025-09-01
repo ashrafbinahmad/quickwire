@@ -19,7 +19,7 @@ jobs:
 
       - name: Set up Git
         run: |
-          git config --global user.name "ashrafbinahmad"
+          git config --global user.name "Muhammed Asraf"
           git config --global user.email "ashrafp216@gmail.com"
 
       - name: Copy files from docs/ to temp folder

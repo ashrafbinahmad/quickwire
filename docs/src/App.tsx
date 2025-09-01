@@ -14,6 +14,7 @@ const customOneDark = {
   'code[class*="language-"]': { ...oneDark['code[class*="language-"]'], background: '#000000' }
 };
 
+
 // Ultra-optimized Floating Particles - Only 3 particles for performance
 const FloatingParticles: React.FC = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none">
