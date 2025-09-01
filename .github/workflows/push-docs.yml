@@ -29,9 +29,10 @@ jobs:
 
       - name: Push to external repo
         run: |
-          cd ../docs-repo
+          cd ../public-repo
           git init
-          git remote add origin https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
+          git checkout -b main   # ensure main branch exists
+          git remote add origin https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
           git add .
           git commit -m "Sync from main repo: $GITHUB_SHA" || echo "No changes to commit"
           git push --force origin main
