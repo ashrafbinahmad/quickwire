@@ -3,8 +3,8 @@ import { motion, useMotionValue, useMotionTemplate, AnimatePresence } from 'fram
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
-  Zap, Code, FileCode, Shield, Rocket, Coffee, Github, CheckCircle, XCircle,
-  Clock, Target, Sparkles, ArrowRight, Copy, Check, Download, Package
+  Zap, Code, FileCode, Shield, Rocket, Github, CheckCircle, XCircle,
+  Clock, Target, Sparkles, ArrowRight, Copy, Check
 } from 'lucide-react';
 
 // Custom dark theme
