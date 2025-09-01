@@ -1,0 +1,37 @@
+name: Sync docs Folder to docs.quickwire Repo
+
+on:
+  push:
+    branches:
+      - "*"   # any branch
+    paths:
+      - "docs/**"   # only run if files inside docs/ folder change
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ensure full history
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Copy files from docs/ to temp folder
+        run: |
+          mkdir ../docs-repo
+          cp -r docs/* ../docs-repo/
+
+      - name: Push to external repo
+        run: |
+          cd ../docs-repo
+          git init
+          git remote add origin https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
+          git add .
+          git commit -m "Sync from main repo: $GITHUB_SHA" || echo "No changes to commit"
+          git push --force origin main
