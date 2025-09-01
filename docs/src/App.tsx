@@ -40,6 +40,7 @@ interface MagicCardProps {
   gradientOpacity?: number;
 }
 
+
 const MagicCard: React.FC<MagicCardProps> = ({
   children,
   className = '',
