@@ -295,11 +295,43 @@ const fadeInRight = { hidden: { opacity: 0, x: 60 }, visible: { opacity: 1, x: 0
 const stagger = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
 
 // Code samples
-const installationCode = `npm install quickwire-nextjs`;
-const setupCode = `{\n  "scripts": {\n    "dev": "quickwire dev",\n    "build": "quickwire build"\n  }\n}`;
-const backendCode = `export async function getUser(params: { id: string }) {\n  return prisma.user.findUnique({\n    where: { id: params.id }\n  });\n}`;
-const clientCode = `import { getUser } from "quickwired/users";\nimport { useQuery } from "@tanstack/react-query";\n\nconst { data: user, isLoading, error } = useQuery({\n  queryKey: ['user', '123'],\n  queryFn: () => getUser({ id: '123' })\n});`;
+const installationCode = `npm install quickwire --save-dev`;
+const setupCode = `{
+  "packageManager": "npm@11.3.0", // Your npm version can be checked with "npm --version"
+  "scripts": {
+    "quickwire": "quickwire --watch",
+    "nextdev": "next dev --turbopack",
+    "dev": "turbo run quickwire nextdev --parallel",
+    "prebuild": "quickwire",
+    "build": "next build"
+  }
+}`;
+const backendCode = `// src/backend/users.ts 
+export async function getUser(params: { id: string }) {
+  return prisma.user.findUnique({
+    where: { id: params.id }
+  });
+}`;
+const clientCode = `// src/app/page.tsx
+import { getUsers } from "quickwired/users";
+import { useQuery } from "@tanstack/react-query";
 
+function Users() {
+  const { data: users, isLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => getUsers()
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  
+  return (
+    <div>
+      {users?.map(user => (
+        <div key={user.id}>{user.name}</div>
+      ))}
+    </div>
+  );
+}`;
 const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white relative overflow-hidden">
