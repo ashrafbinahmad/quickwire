@@ -32,7 +32,7 @@ jobs:
           cd ../docs-repo
           git init
           git checkout -b main   # ensure main branch exists
-          git remote add origin https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
+          git remote add origin https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
           git add .
           git commit -m "Sync from main repo: $GITHUB_SHA" || echo "No changes to commit"
           git push --force origin main
