@@ -29,7 +29,7 @@ jobs:
 
       - name: Push to external repo
         run: |
-          cd ../public-repo
+          cd ../docs-repo
           git init
           git checkout -b main   # ensure main branch exists
           git remote add origin https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/ashrafbinahmad/docs.quickwire.git
