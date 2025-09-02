@@ -3,10 +3,8 @@ name: Deploy Documentation to GitHub Pages
 on:
   push:
     branches: [ main, master ]
-    paths: [ 'docs/**' ]
   pull_request:
     branches: [ main, master ]
-    paths: [ 'docs/**' ]
   workflow_dispatch:
 
 permissions:
@@ -33,14 +31,14 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+          cache-dependency-path: ./package-lock.json
       
       - name: Install dependencies
-        working-directory: docs
+        working-directory: .
         run: npm ci
       
       - name: Build
-        working-directory: docs
+        working-directory: .
         run: npm run build
       
       - name: Setup Pages
@@ -49,7 +47,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs/dist'
+          path: './dist'
       
       - name: Deploy to GitHub Pages
         id: deployment
