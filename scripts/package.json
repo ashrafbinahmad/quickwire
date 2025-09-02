@@ -1,6 +1,6 @@
 {
   "name": "quickwire",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Automatic API generator for Next.js applications that creates API routes and TypeScript client functions from backend functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -31,7 +31,7 @@
   "bugs": {
     "url": "https://github.com/ashrafbinahmad/quickwire/issues"
   },
-  "homepage": "https://github.com/ashrafbinahmad/quickwire#readme",
+  "homepage": "https://ashrafbinahmad.github.io/quickwire",
   "engines": {
     "node": ">=18.0.0"
   },

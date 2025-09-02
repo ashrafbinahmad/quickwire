@@ -1,8 +1,20 @@
-# 🚀 Quickwire
+# <div align="center"><div style="width: 32px; height: 32px; background: linear-gradient(to right, #8b5cf6, #ec4899); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></div> Quickwire</div> 
 
 **Automatic API Generator for Next.js Applications**
 
 Quickwire automatically generates Next.js API routes and TypeScript client functions from your backend functions, eliminating boilerplate code and ensuring type safety.
+
+> **Note**: This root directory is a test Next.js application. The actual Quickwire npm module codebase is located in the `scripts` folder. Please go there for the complete codebase and documentation.
+
+<div align="center">
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/quickwire)
+[![NPM Package](https://img.shields.io/badge/NPM%20Package-CB3837?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/quickwire)
+[![Read Documentation](https://img.shields.io/badge/Read%20Documentation-4285F4?style=for-the-badge&logo=gitbook&logoColor=white)](https://ashrafbinahmad.github.io/quickwire/)
+
+[📦 View Quickwire Codebase →](scripts/)
+
+</div>
 
 ## 📦 Installation
 
@@ -50,6 +62,7 @@ Add TypeScript path mapping to your `tsconfig.json`:
 3. Write client function manually
 4. Handle types manually
 5. Manage errors manually
+6. Write API documentation manually
 
 **Result**: Lots of boilerplate, potential type mismatches, manual maintenance
 
@@ -59,7 +72,7 @@ Add TypeScript path mapping to your `tsconfig.json`:
 2. Run `npm run dev`
 3. ✨ Everything else is auto-generated!
 
-**Result**: 70% less code, 100% type safety, zero maintenance
+**Result**: 70% less code, 100% type safety, zero maintenance, automatic Swagger documentation
 
 ## 📝 Integration Example
 
@@ -121,67 +134,6 @@ Quickwire automatically generates:
 - ✅ Full type safety and error handling
 - ✅ HTTP method detection (GET/POST/PUT/DELETE)
 
-## 🔧 Configuration
-
-Optional `quickwire.config.json` in your scripts directory:
-
-```json
-{
-  "backendDir": "src/backend",
-  "apiDir": "src/app/api/(quickwired)",
-  "quickwireDir": "quickwired",
-  "supportedExtensions": [".ts", ".js"],
-  "apiRouteTemplate": "route.ts",
-  "excludePatterns": ["*.test.ts", "*.spec.ts", "*.d.ts", "node_modules", ".git"],
-  "watchDebounceMs": 100,
-  "performance": {
-    "enableDocGeneration": true,
-    "maxFilesToProcess": 1000,
-    "enableIncrementalUpdates": true,
-    "cacheExpiryMs": 1800000
-  },
-  "httpMethods": {
-    "GET": [
-      "get", "fetch", "find", "list", "show", "read", "retrieve", "search",
-      "query", "view", "display", "load", "check", "verify", "validate",
-      "count", "exists", "has", "is", "can"
-    ],
-    "POST": [
-      "create", "add", "insert", "post", "submit", "send", "upload",
-      "register", "login", "signup", "authenticate", "authorize", "process",
-      "execute", "run", "perform", "handle", "trigger", "invoke", "call",
-      "generate", "build", "make", "produce", "sync", "import", "export"
-    ],
-    "PUT": [
-      "update", "edit", "modify", "change", "set", "put", "replace",
-      "toggle", "switch", "enable", "disable", "activate", "deactivate",
-      "publish", "unpublish", "approve", "reject", "accept", "decline",
-      "assign", "unassign", "move", "transfer", "migrate", "restore",
-      "reset", "refresh", "renew", "reorder", "sort", "merge"
-    ],
-    "PATCH": [
-      "patch", "partial", "increment", "decrement", "append", "prepend",
-      "adjust", "tweak", "fine", "tune"
-    ],
-    "DELETE": [
-      "delete", "remove", "destroy", "clear", "clean", "purge", "drop",
-      "erase", "wipe", "cancel", "revoke", "withdraw", "uninstall",
-      "detach", "disconnect", "unlink", "archive", "trash"
-    ]
-  }
-}
-```
-
-### Configuration Options
-
-- **`backendDir`**: Directory containing backend functions (default: `"src/backend"`)
-- **`apiDir`**: Directory where API routes are generated (default: `"src/app/api/(quickwired)"`)
-- **`quickwireDir`**: Directory where client functions are generated (default: `"quickwired"`)
-- **`supportedExtensions`**: File extensions to process (default: `[".ts", ".js"]`)
-- **`excludePatterns`**: Files/patterns to ignore during processing
-- **`watchDebounceMs`**: Debounce delay for file watching (default: `100`ms)
-- **`performance`**: Performance optimization settings
-- **`httpMethods`**: Function name patterns for HTTP method detection
 
 ## 🚀 Quick Start
 

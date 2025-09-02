@@ -1,8 +1,15 @@
-# 🚀 Quickwire
+# <div align="center"><div style="width: 32px; height: 32px; background: linear-gradient(to right, #8b5cf6, #ec4899); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></div> Quickwire</div> 
 
 **Automatic API Generator for Next.js Applications**
 
 Quickwire automatically generates Next.js API routes and TypeScript client functions from your backend functions, eliminating boilerplate code and ensuring type safety.
+
+<div align="center">
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/quickwire)
+[![NPM Package](https://img.shields.io/badge/NPM%20Package-CB3837?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/quickwire)
+[![Read Documentation](https://img.shields.io/badge/Read%20Documentation-4285F4?style=for-the-badge&logo=gitbook&logoColor=white)](https://ashrafbinahmad.github.io/quickwire/)
+</div>
 
 ## 📦 Installation
 
