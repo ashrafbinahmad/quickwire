@@ -33,7 +33,6 @@ const FloatingParticles: React.FC = () => (
   </div>
 );
 
-
 // Magic Card Component (Optimized from Magic UI)
 interface MagicCardProps {
   children: React.ReactNode;
