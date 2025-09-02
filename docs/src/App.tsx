@@ -46,12 +46,13 @@ const QuickWireWebsite = () => {
     );
   }
 
+
   return (
     <div className="min-h-screen bg-gray-950 text-white relative overflow-hidden">
       <AnimatedBackground />
 
       {/* Header */}
-      <header className="relative z-10 border-b border-gray-800/50 backdrop-blur-sm">
+      <header className="fixed w-full top-0 left-0 z-50 border-b bg-blue-950/5 border-gray-800/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -63,13 +64,7 @@ const QuickWireWebsite = () => {
               </span>
             </div>
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => setActivePage('docs')}
-                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
-              >
-                <Book size={18} />
-                <span className="hidden sm:inline">Documentation</span>
-              </button>
+              
               <a href="https://github.com/ashrafbinahmad/quickwire" className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
                 <Github size={18} />
                 <span className="hidden sm:inline">GitHub</span>
@@ -78,13 +73,23 @@ const QuickWireWebsite = () => {
                 <FileText size={18} />
                 <span className="hidden sm:inline">NPM</span>
               </a>
+              
+              <a 
+                href="https://www.buymeacoffee.com/quickwire" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors bg-[#ef74bd]-600/70 hover:bg-[#ef74bd]-600/30 px-3 py-1.5 rounded-lg border border-[#ef74bd]-600/60"
+              >
+                <span className="text-[#ef74bd]-400">☕</span>
+                <span className="hidden sm:inline">Buy me a coffee</span>
+              </a>
             </div>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="relative z-10 py-20 px-6">
+      <section className="relative z-10 py-20 px-6 mt-10">
         <div className="max-w-6xl mx-auto text-center">
           <div className={`transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <div className="inline-flex items-center gap-2 bg-gray-800/50 border border-gray-700/50 rounded-full px-4 py-2 mb-6 backdrop-blur-sm">
