@@ -409,16 +409,18 @@ const App: React.FC = () => {
 
           <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-20">
             <MagicGlow>
-              <Button size="lg" className="group">
-                <Rocket className="h-6 w-6 mr-3" />
-                Get Started Now
-              </Button>
+              <a href="#start">
+                <Button size="lg" className="group">
+                  <Rocket className="h-6 w-6 mr-3" />
+                  Get Started Now
+                </Button>
+              </a>
             </MagicGlow>
-            <MagicGlow>
+            {/* <MagicGlow>
               <Button variant="outline" size="lg">
                 <FileCode className="h-6 w-6 mr-3" />View Documentation
               </Button>
-            </MagicGlow>
+            </MagicGlow> */}
           </motion.div>
 
           {/* Stats */}
@@ -505,11 +507,11 @@ const App: React.FC = () => {
 
 
       {/* Installation Steps */}
-      <section className="py-20 px-6">
+      <section id='start' className="py-20 px-6">
         <div className="container mx-auto max-w-4xl">
-          <TextAnimate animation="blurIn" className="text-5xl font-bold text-center mb-16">
+          <h2  className="text-5xl font-bold text-center mb-16">
             Get Started in 30 Seconds
-          </TextAnimate>
+          </h2>
 
           <div className="space-y-8">
             {[
