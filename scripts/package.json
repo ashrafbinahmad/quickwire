@@ -1,6 +1,6 @@
 {
   "name": "quickwire",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Automatic API generator for Next.js applications that creates API routes and TypeScript client functions from backend functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
