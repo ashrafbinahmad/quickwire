@@ -235,7 +235,7 @@ export default function SearchDemoPage() {
               {searchResults ? (
                 <>
                   <div className="mb-4 text-sm text-gray-600">
-                    Found <span className="font-semibold">{searchResults.total}</span> contact(s) matching "{searchQuery}"
+                    Found <span className="font-semibold">{searchResults.total}</span> contact(s) matching {searchQuery}
                     {searchResults.total > searchResults.contacts.length && (
                       <span> (showing {searchResults.contacts.length})</span>
                     )}

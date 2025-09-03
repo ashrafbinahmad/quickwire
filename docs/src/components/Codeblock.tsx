@@ -113,7 +113,7 @@ interface CodeBlockProps {
 }
 
 
-export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, id }) => {
+export const CodeBlock = ({ code, language, id }: CodeBlockProps) => {
   const [copiedCode, setCopiedCode] = useState('');
   const copyToClipboard = (text: string, id: string): void => {
     navigator.clipboard.writeText(text);

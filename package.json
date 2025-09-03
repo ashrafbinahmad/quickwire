@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "quickwire": "quickwire --watch",
+    "quickwire": "tsx scripts/cli.ts --watch",
     "nextdev": "next dev --turbo",
     "dev": "turbo run quickwire nextdev --parallel",
-    "prebuild": "quickwire",
+    "prebuild": "tsx scripts/cli.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

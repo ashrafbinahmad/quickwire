@@ -122,8 +122,33 @@ function runWatch(): void {
   });
 }
 
+function ensureUtilsFile(): void {
+  const targetUtilsPath = path.join(process.cwd(), "src", "lib", "utils.quickwire.ts");
+  const sourceUtilsPath = path.join(__dirname, "utils", "utils.quickwire.ts");
+
+  if (!fs.existsSync(targetUtilsPath)) {
+    console.log("📄 utils.quickwire.ts not found, copying from source...");
+    
+    // Ensure target directory exists
+    const targetDir = path.dirname(targetUtilsPath);
+    fs.mkdirSync(targetDir, { recursive: true });
+    
+    // Copy the file
+    try {
+      fs.copyFileSync(sourceUtilsPath, targetUtilsPath);
+      console.log("✅ Successfully copied utils.quickwire.ts to @/lib/utils.quickwire.ts");
+    } catch (error) {
+      console.error("❌ Failed to copy utils.quickwire.ts:", error);
+      throw error;
+    }
+  }
+}
+
 function main(): void {
   try {
+    // Ensure utils file exists first
+    ensureUtilsFile();
+    
     // Ensure directories exist
     fs.mkdirSync(CONFIG.backendDir, { recursive: true });
     fs.mkdirSync(CONFIG.apiDir, { recursive: true });

@@ -18,7 +18,79 @@ interface FileMetadata {
 }
 
 export const generatedFiles = new Map<string, FileMetadata>();
-export const docCache = new Map<string, any>();
+// Define proper types for OpenAPI specification
+interface OpenApiSchema {
+  type?: string;
+  format?: string;
+  items?: OpenApiSchema;
+  properties?: Record<string, OpenApiSchema>;
+  required?: string[];
+  oneOf?: OpenApiSchema[];
+  description?: string;
+}
+
+interface OpenApiParameter {
+  name: string;
+  in: 'query' | 'path' | 'header' | 'cookie';
+  required?: boolean;
+  schema: OpenApiSchema;
+  description?: string;
+}
+
+interface OpenApiRequestBody {
+  required?: boolean;
+  content: {
+    'application/json'?: {
+      schema: OpenApiSchema;
+    };
+    'multipart/form-data'?: {
+      schema: OpenApiSchema;
+    };
+  };
+}
+
+interface OpenApiResponse {
+  description: string;
+  content?: {
+    'application/json'?: {
+      schema: OpenApiSchema;
+    };
+  };
+}
+
+interface OpenApiPathItem {
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  operationId?: string;
+  parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
+  responses: Record<string, OpenApiResponse>;
+}
+
+interface OpenApiSpec {
+  openapi: string;
+  info: {
+    title: string;
+    description: string;
+    version: string;
+    contact?: {
+      name: string;
+    };
+    'x-generated-at'?: string;
+  };
+  servers: Array<{
+    url: string;
+    description: string;
+  }>;
+  paths: Record<string, Record<string, OpenApiPathItem>>;
+  tags: Array<{
+    name: string;
+    description: string;
+  }>;
+}
+
+export const docCache = new Map<string, OpenApiSpec>();
 export const backendToGenerated = new Map<string, Set<string>>();
 export const deletedFiles = new Set<string>();
 export const changedFiles = new Set<string>();
@@ -263,10 +335,15 @@ export function generateQuickwireFile(
       "",
       "type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;",
       "",
+      "// Define proper request data types",
+      "type RequestData = FormData | Record<string, unknown> | string | number | boolean | null | undefined;",
+      "",
     ];
 
-    lines.push(`import { makeQuickwireRequest } from "quickwire/utils";`);
-    lines.push(`import { convertToFormData } from "quickwire/utils";`);
+    lines.push(`import { makeQuickwireRequest, convertToFormData } from "@/lib/utils.quickwire";`);
+    lines.push("");
+    lines.push("// Type-safe request helpers");
+    lines.push("type SafeRequestData<T> = T extends FormData ? FormData : T extends Record<string, unknown> ? T : RequestData;");
     lines.push("");
 
     const backendImportPath = `@/backend/${relativePath.replace(/\.[tj]s$/, "")}`;
@@ -322,7 +399,7 @@ export function generateQuickwireFile(
 
       const hasFileParam = func.parameters.some((p) => typeStringHasFile(p.type));
 
-      if (method === "GET" || method === "DELETE") {
+      if (method === "GET") {
         if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
           // Single object parameter - use the object type
           const param = func.parameters[0];
@@ -330,7 +407,7 @@ export function generateQuickwireFile(
           lines.push(`  const query = new URLSearchParams();`);
           // For object destructured params, we need to iterate over the object properties
           lines.push(`  if (${param.name}) {`);
-          lines.push(`    Object.entries(${param.name}).forEach(([key, value]) => {`);
+          lines.push(`    Object.entries(${param.name} as Record<string, unknown>).forEach(([key, value]) => {`);
           lines.push(`      if (value !== undefined && value !== null) query.append(key, String(value));`);
           lines.push(`    });`);
           lines.push(`  }`);
@@ -343,24 +420,32 @@ export function generateQuickwireFile(
           lines.push(`  const query = new URLSearchParams();`);
           func.parameters.forEach((p) => {
             lines.push(
-              `  if (${p.name} !== undefined) query.append("${p.name}", String(${p.name}));`
+              `  if (${p.name} !== undefined) query.append("${p.name}", String(${p.name} as string | number | boolean));`
             );
           });
         }
         lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(\`${route}?\${query.toString()}\`, "${method}");`
+          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+            \`${route}?\${query.toString()}\`,
+            "${method}"
+          );`
         );
         lines.push("};");
       } else if (hasFileParam) {
         lines.push(
           `export const ${func.name} = (params: ${signature.parameterType}) => {`
         );
-        lines.push(`  const formData = convertToFormData(params);`);
+        lines.push(`  const formData: FormData = convertToFormData(params as Record<string, unknown>);`);
         lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(\`${route}\`, "${method}", formData);`
+          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+            \`${route}\`,
+            "${method}",
+            formData as SafeRequestData<FormData>
+          );`
         );
-        lines.push("};");
-      } else {
+        lines.push("};")
+      } else if (method === "DELETE") {
+        // DELETE method uses request body like POST/PUT
         const allOptional = func.parameters.every((p) => p.optional);
         const optionalModifier =
           allOptional && !signature.parameterType.includes("|") ? "?" : "";
@@ -377,7 +462,36 @@ export function generateQuickwireFile(
 
         lines.push(`export const ${func.name} = (${paramDecl}) => {`);
         lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(\`${route}\`, "${method}", ${paramUsage});`
+          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+            \`${route}\`,
+            "${method}",
+            ${paramUsage} as SafeRequestData<${signature.parameterType}>
+          );`
+        );
+        lines.push("};");
+      } else {
+        // POST, PUT, PATCH methods
+        const allOptional = func.parameters.every((p) => p.optional);
+        const optionalModifier =
+          allOptional && !signature.parameterType.includes("|") ? "?" : "";
+
+        const paramDecl =
+          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
+            ? `${func.parameters[0].name}${optionalModifier}: ${signature.parameterType}`
+            : `params${optionalModifier}: ${signature.parameterType}`;
+
+        const paramUsage =
+          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
+            ? signature.parameterUsage
+            : signature.parameterUsage || "params";
+
+        lines.push(`export const ${func.name} = (${paramDecl}) => {`);
+        lines.push(
+          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+            \`${route}\`,
+            "${method}",
+            ${paramUsage} as SafeRequestData<${signature.parameterType}>
+          );`
         );
         lines.push("};");
       }
@@ -438,18 +552,20 @@ export function generateApiRoutesForFile(
         );
       });
 
-      if (["GET", "DELETE"].includes(method)) {
+      if (method === "GET") {
         parameterHandling = `
   const { searchParams } = new URL(req.url);
 ${func.parameters
-  .map((p) => `  const ${p.name} = searchParams.get("${p.name}");`)
+  .map((p) => `  const ${p.name} = searchParams.get("${p.name}") as ${p.type.includes('?') ? p.type : `${p.type} | null`};`)
   .join("\n")}
         `.trim();
 
         functionCallParams = func.parameters.map((p) => p.name);
       } else if (fileParams.length > 0) {
         parameterHandling = `
-  function parseNestedValue(value: string): any {
+  type ParsedValue = string | number | boolean | object | File;
+  
+  function parseNestedValue(value: string): ParsedValue {
     // Try to parse as JSON for nested objects/arrays
     if (value.startsWith('{') || value.startsWith('[')) {
       try {
@@ -468,33 +584,33 @@ ${func.parameters
     return value;
   }
 
-  function assignDeep(obj: any, keyPath: string, value: any): void {
+  function assignDeep(obj: Record<string, ParsedValue | ParsedValue[]>, keyPath: string, value: ParsedValue): void {
     const keys = keyPath.replace(/\\]/g, '').split(/[\\[.]/);
-    let current = obj;
+    let current: Record<string, ParsedValue | ParsedValue[]> | ParsedValue[] = obj;
     
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
       if (!key) continue; // Skip empty keys from split
       
-      if (!current[key]) {
+      if (!(current as Record<string, ParsedValue | ParsedValue[]>)[key]) {
         // Check if next key is a number (array index)
         const nextKey = keys[i + 1];
-        current[key] = !isNaN(Number(nextKey)) ? [] : {};
+        (current as Record<string, ParsedValue | ParsedValue[]>)[key] = !isNaN(Number(nextKey)) ? [] : {};
       }
-      current = current[key];
+      current = (current as Record<string, ParsedValue | ParsedValue[]>)[key] as Record<string, ParsedValue | ParsedValue[]> | ParsedValue[];
     }
     
     const lastKey = keys[keys.length - 1];
     if (lastKey) {
-      current[lastKey] = value instanceof File ? value : parseNestedValue(value.toString());
+      (current as Record<string, ParsedValue | ParsedValue[]>)[lastKey] = value instanceof File ? value : parseNestedValue(value.toString());
     }
   }
 
-  function formDataToObject(formData: FormData): any {
-    const obj: any = {};
+  function formDataToObject(formData: FormData): Record<string, ParsedValue | ParsedValue[]> {
+    const obj: Record<string, ParsedValue | ParsedValue[]> = {};
     
     for (const [key, value] of formData.entries()) {
-      assignDeep(obj, key, value);
+      assignDeep(obj, key, value as ParsedValue);
     }
     
     return obj;
@@ -522,30 +638,49 @@ ${func.parameters
 `;
 
         if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
-          functionCallParams = ["params"];
+          functionCallParams = [`params as Parameters<typeof ${func.name}>[0]`];
         } else {
-          functionCallParams = func.parameters.map((p) => `params["${p.name}"]`);
+          functionCallParams = func.parameters.map((p, index) => `params.${p.name} as Parameters<typeof ${func.name}>[${index}]`);
         }
       } else {
+        // Generate specific interface for the request body based on function parameters
+        let bodyInterface = "";
+        if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
+          // Single object parameter - use the exact type
+          const param = func.parameters[0];
+          bodyInterface = `  type RequestBody = ${param.type};`;
+        } else if (func.parameters.length > 0) {
+          // Multiple parameters - create interface with exact parameter types
+          const paramDeclarations = func.parameters.map(p => 
+            `    ${p.name}${p.optional ? "?" : ""}: ${p.type};`
+          ).join("\n");
+          bodyInterface = `  interface RequestBody {\n${paramDeclarations}\n  }`;
+        } else {
+          // No parameters
+          bodyInterface = "  interface RequestBody {\n    [key: string]: never;\n  }";
+        }
+        
         parameterHandling = `
-  let body: any;
+${bodyInterface}
+  
+  let body: RequestBody;
   try {
     const contentType = req.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      body = await req.json();
+      body = await req.json() as RequestBody;
     } else {
       const textBody = await req.text();
-      body = textBody ? JSON.parse(textBody) : {};
+      body = textBody ? JSON.parse(textBody) as RequestBody : {} as RequestBody;
     }
   } catch (error) {
-    body = {};
+    body = {} as RequestBody;
   }
 `;
 
         if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
-          functionCallParams = ["body"];
+          functionCallParams = [`body as Parameters<typeof ${func.name}>[0]`];
         } else {
-          functionCallParams = func.parameters.map((p) => `body["${p.name}"]`);
+          functionCallParams = func.parameters.map((p) => `body.${p.name} as Parameters<typeof ${func.name}>[0]`);
         }
       }
 
@@ -914,13 +1049,13 @@ interface ApiEndpointDoc {
   summary: string;
   description: string;
   tags: string[];
-  parameters?: any[];
-  requestBody?: any;
-  responses: any;
+  parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
+  responses: Record<string, OpenApiResponse>;
   operationId: string;
 }
 
-function generateParameterSchema(parameters: ExportedFunction["parameters"]): any {
+function generateParameterSchema(parameters: ExportedFunction["parameters"]): OpenApiSchema | null {
   if (parameters.length === 0) {
     return null;
   }
@@ -932,7 +1067,7 @@ function generateParameterSchema(parameters: ExportedFunction["parameters"]): an
     }
 
     const directSchema = parseTypeToSchema(param.type);
-    const wrappedSchema = {
+    const wrappedSchema: OpenApiSchema = {
       type: "object",
       properties: {
         [param.name]: directSchema,
@@ -942,10 +1077,10 @@ function generateParameterSchema(parameters: ExportedFunction["parameters"]): an
 
     return {
       oneOf: [directSchema, wrappedSchema],
-    };
+    } as OpenApiSchema;
   }
 
-  const properties: any = {};
+  const properties: Record<string, OpenApiSchema> = {};
   const required: string[] = [];
 
   parameters.forEach((param) => {
@@ -959,10 +1094,10 @@ function generateParameterSchema(parameters: ExportedFunction["parameters"]): an
     type: "object",
     properties,
     required: required.length > 0 ? required : undefined,
-  };
+  } as OpenApiSchema;
 }
 
-function parseTypeToSchema(typeStr: string): any {
+function parseTypeToSchema(typeStr: string): OpenApiSchema {
   const type = typeStr.trim();
 
   // Basic types
@@ -971,7 +1106,7 @@ function parseTypeToSchema(typeStr: string): any {
   if (type === "boolean") return { type: "boolean" };
   if (type === "any") return {};
   if (type === "unknown") return {};
-  if (type === "void") return null;
+  if (type === "void") return { type: "null" };
   if (type === "File") return { type: "string", format: "binary" };
   if (type === "Blob") return { type: "string", format: "binary" };
   if (type === "FormData") return { type: "object" };
@@ -982,7 +1117,7 @@ function parseTypeToSchema(typeStr: string): any {
     return {
       type: "array",
       items: parseTypeToSchema(itemType),
-    };
+    } as OpenApiSchema;
   }
 
   const arrayMatch = type.match(/^Array<(.+)>$/);
@@ -990,7 +1125,7 @@ function parseTypeToSchema(typeStr: string): any {
     return {
       type: "array",
       items: parseTypeToSchema(arrayMatch[1]),
-    };
+    } as OpenApiSchema;
   }
 
   // Promise types
@@ -1004,12 +1139,12 @@ function parseTypeToSchema(typeStr: string): any {
     const unionTypes = type.split("|").map((t) => t.trim());
     return {
       oneOf: unionTypes.map((t) => parseTypeToSchema(t)),
-    };
+    } as OpenApiSchema;
   }
 
   // Object types
   if (type.startsWith("{") && type.endsWith("}")) {
-    const properties: any = {};
+    const properties: Record<string, OpenApiSchema> = {};
     const required: string[] = [];
 
     const content = type.slice(1, -1).trim();
@@ -1038,14 +1173,14 @@ function parseTypeToSchema(typeStr: string): any {
       type: "object",
       properties,
       required: required.length > 0 ? required : undefined,
-    };
+    } as OpenApiSchema;
   }
 
   // Custom/unknown types
   return {
     type: "object",
     description: `Custom type: ${type}`,
-  };
+  } as OpenApiSchema;
 }
 
 function splitObjectProperties(content: string): string[] {
@@ -1104,7 +1239,7 @@ function generateFunctionSummary(functionName: string, httpMethod: string): stri
   return `${action} ${readableName}`;
 }
 
-function generateApiDocumentation(): any {
+function generateApiDocumentation(): OpenApiSpec {
   const docs: ApiEndpointDoc[] = [];
 
   function walkDir(dir: string): void {
@@ -1223,8 +1358,8 @@ function generateApiDocumentation(): any {
           : "Development server",
       },
     ],
-    paths: {} as any,
-    tags: [] as any[],
+    paths: {} as Record<string, Record<string, OpenApiPathItem>>,
+    tags: [] as Array<{ name: string; description: string }>,
   };
 
   // Deduplicate docs based on operationId and path
