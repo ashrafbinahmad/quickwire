@@ -140,10 +140,10 @@ function safeWriteFile(filePath: string, content: string, sourceFile: string): b
     // Create temporary file first
     const tempPath = `${filePath}.tmp`;
     fs.writeFileSync(tempPath, content, "utf8");
-    
+
     // Atomic move
     fs.renameSync(tempPath, filePath);
-    
+
     // Track the generated file
     const metadata: FileMetadata = {
       generatedAt: Date.now(),
@@ -151,12 +151,12 @@ function safeWriteFile(filePath: string, content: string, sourceFile: string): b
       checksum: calculateFileChecksum(filePath)
     };
     generatedFiles.set(filePath, metadata);
-    
+
     console.log(`✅ Generated: ${path.relative(process.cwd(), filePath)}`);
     return true;
   } catch (error) {
     console.error(`❌ Failed to write file ${filePath}:`, error);
-    
+
     // Clean up temp file if it exists
     try {
       const tempPath = `${filePath}.tmp`;
@@ -166,7 +166,7 @@ function safeWriteFile(filePath: string, content: string, sourceFile: string): b
     } catch (cleanupError) {
       console.warn(`⚠️ Failed to cleanup temp file:`, cleanupError);
     }
-    
+
     return false;
   }
 }
@@ -184,7 +184,7 @@ function safeRemoveFile(filePath: string): boolean {
       fs.unlinkSync(filePath);
       console.log(`🗑️ Removed: ${path.relative(process.cwd(), filePath)}`);
     }
-    
+
     generatedFiles.delete(filePath);
     return true;
   } catch (error) {
@@ -196,7 +196,7 @@ function safeRemoveFile(filePath: string): boolean {
 function safeRemoveDirectory(dirPath: string): boolean {
   try {
     if (!fs.existsSync(dirPath)) return true;
-    
+
     const entries = fs.readdirSync(dirPath);
     if (entries.length === 0) {
       fs.rmdirSync(dirPath);
@@ -214,10 +214,10 @@ export function markFileChanged(filePath: string): void {
   if (isProcessing) {
     console.log(`⏸️ Queueing change for ${path.relative(process.cwd(), filePath)} (processing in progress)`);
   }
-  
+
   changedFiles.add(filePath);
   fileCache.delete(filePath); // Invalidate cache
-  
+
   // Remove from deleted files if it was marked as deleted
   deletedFiles.delete(filePath);
 }
@@ -226,7 +226,7 @@ export function markFileDeleted(filePath: string): void {
   deletedFiles.add(filePath);
   changedFiles.delete(filePath);
   fileCache.delete(filePath);
-  
+
   console.log(`🗑️ Marked for deletion: ${path.relative(process.cwd(), filePath)}`);
 }
 
@@ -271,7 +271,17 @@ function generateFunctionSignature(func: ExportedFunction): {
   callSignature: string;
   parameterUsage: string;
 } {
-  if (func.parameters.length === 0) {
+  // Filter out context parameters from client signature
+  const clientParams = func.parameters.filter(p => {
+    const type = p.type.toLowerCase();
+    return !(
+      type.includes('quickwirecontext') ||
+      type.includes('context') && (type.includes('request') || type.includes('req')) ||
+      p.name.toLowerCase().includes('context') && p.optional
+    );
+  });
+
+  if (clientParams.length === 0) {
     return {
       parameterType: "void",
       callSignature: "() =>",
@@ -279,8 +289,8 @@ function generateFunctionSignature(func: ExportedFunction): {
     };
   }
 
-  if (func.parameters.length === 1) {
-    const param = func.parameters[0];
+  if (clientParams.length === 1) {
+    const param = clientParams[0];
 
     if (isObjectDestructured(param)) {
       return {
@@ -300,7 +310,7 @@ function generateFunctionSignature(func: ExportedFunction): {
     };
   }
 
-  const paramStrings = func.parameters.map(
+  const paramStrings = clientParams.map(
     (p) => `${p.name}${p.optional ? "?" : ""}: ${p.type}`
   );
   const objectType = `{ ${paramStrings.join("; ")} }`;
@@ -314,11 +324,14 @@ function generateFunctionSignature(func: ExportedFunction): {
 
 export function generateQuickwireFile(
   filePath: string,
-  endpoints: Record<string, { route: string; method: string }>
+  endpoints: Record<string, { route: string; method: string }>,
+  moduleExports?: ModuleExports
 ): boolean {
   try {
     const relativePath = sanitizeFilePath(path.relative(CONFIG.backendDir, filePath));
-    const moduleExports = analyzeModuleExports(filePath);
+    if (!moduleExports) {
+      moduleExports = analyzeModuleExports(filePath);
+    }
 
     if (moduleExports.functions.length === 0) {
       console.log(`⏭️ Skipping ${relativePath} - no exported functions`);
@@ -341,6 +354,7 @@ export function generateQuickwireFile(
     ];
 
     lines.push(`import { makeQuickwireRequest, convertToFormData } from "@/lib/utils.quickwire";`);
+    lines.push(`import type { AxiosRequestConfig } from "axios";`);
     lines.push("");
     lines.push("// Type-safe request helpers");
     lines.push("type SafeRequestData<T> = T extends FormData ? FormData : T extends Record<string, unknown> ? T : RequestData;");
@@ -351,15 +365,18 @@ export function generateQuickwireFile(
       .map((func) => `${func.name} as ${func.name}Internal`)
       .join(", ");
 
-    if (functionImports) {
-      lines.push(`import { ${functionImports} } from "${backendImportPath}";`);
+    // Extract type names for import
+    const typeImports = moduleExports.types
+      .map((type) => type.name)
+      .join(", ");
+
+    // Combine function and type imports
+    const allImports = functionImports + (functionImports && typeImports ? ", " : "") + typeImports;
+
+    if (allImports) {
+      lines.push(`import { ${allImports} } from "${backendImportPath}";`);
       lines.push("");
     }
-
-    moduleExports.types.forEach((type) => {
-      lines.push(type.declaration);
-      lines.push("");
-    });
 
     let functionsGenerated = 0;
 
@@ -376,8 +393,6 @@ export function generateQuickwireFile(
       if (!route.startsWith("/api")) {
         route = `/api${route}`;
       }
-
-      const signature = generateFunctionSignature(func);
 
       function typeStringHasFile(typeStr: string): boolean {
         if (!typeStr) return false;
@@ -397,102 +412,92 @@ export function generateQuickwireFile(
         );
       }
 
-      const hasFileParam = func.parameters.some((p) => typeStringHasFile(p.type));
+      // Filter out context parameters for client-side functions
+      const clientParams = func.parameters.filter(p => {
+        const type = p.type.toLowerCase();
+        const name = p.name.toLowerCase();
+        return !(
+          type.includes('quickwirecontext') ||
+          type.includes('requestcontext') ||
+          type.includes('context') ||
+          name.includes('context') ||
+          name === 'ctx' ||
+          name === 'req' ||
+          name === 'request'
+        );
+      });
 
-      if (method === "GET") {
-        if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
-          // Single object parameter - use the object type
-          const param = func.parameters[0];
-          lines.push(`export const ${func.name} = (${param.name}${param.optional ? "?" : ""}: ${param.type}) => {`);
-          lines.push(`  const query = new URLSearchParams();`);
-          // For object destructured params, we need to iterate over the object properties
-          lines.push(`  if (${param.name}) {`);
-          lines.push(`    Object.entries(${param.name} as Record<string, unknown>).forEach(([key, value]) => {`);
-          lines.push(`      if (value !== undefined && value !== null) query.append(key, String(value));`);
-          lines.push(`    });`);
-          lines.push(`  }`);
+      // Generate signature based only on client parameters
+      const clientSignature = clientParams.length > 0 ? generateFunctionSignature({
+        ...func,
+        parameters: clientParams
+      }) : { parameterType: 'void', parameterUsage: undefined };
+
+      const hasFileParam = clientParams.some((p) => typeStringHasFile(p.type));
+
+      // Unified parameter handling for ALL methods - use body for everything
+      if (hasFileParam) {
+        // Handle file uploads with FormData
+        if (clientParams.length > 0) {
+          lines.push(
+            `export const ${func.name} = (params: ${clientSignature.parameterType}, axiosConfig?: AxiosRequestConfig) => {`
+          );
+          lines.push(`  const formData: FormData = convertToFormData(params as Record<string, unknown>);`);
         } else {
-          // Multiple parameters or simple parameters
-          const paramDeclarations = func.parameters.map(p => 
-            `${p.name}${p.optional ? "?" : ""}: ${p.type}`
-          ).join(", ");
-          lines.push(`export const ${func.name} = (${paramDeclarations}) => {`);
-          lines.push(`  const query = new URLSearchParams();`);
-          func.parameters.forEach((p) => {
-            lines.push(
-              `  if (${p.name} !== undefined) query.append("${p.name}", String(${p.name} as string | number | boolean));`
-            );
-          });
+          lines.push(`export const ${func.name} = (axiosConfig?: AxiosRequestConfig) => {`);
+          lines.push(`  const formData: FormData = new FormData();`);
         }
+
         lines.push(
           `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
-            \`${route}?\${query.toString()}\`,
-            "${method}"
-          );`
+        \`${route}\`,
+        "${method}",
+        formData as SafeRequestData<FormData>,
+        axiosConfig
+      );`
         );
         lines.push("};");
-      } else if (hasFileParam) {
-        lines.push(
-          `export const ${func.name} = (params: ${signature.parameterType}) => {`
-        );
-        lines.push(`  const formData: FormData = convertToFormData(params as Record<string, unknown>);`);
-        lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
-            \`${route}\`,
-            "${method}",
-            formData as SafeRequestData<FormData>
-          );`
-        );
-        lines.push("};")
-      } else if (method === "DELETE") {
-        // DELETE method uses request body like POST/PUT
-        const allOptional = func.parameters.every((p) => p.optional);
-        const optionalModifier =
-          allOptional && !signature.parameterType.includes("|") ? "?" : "";
 
-        const paramDecl =
-          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
-            ? `${func.parameters[0].name}${optionalModifier}: ${signature.parameterType}`
-            : `params${optionalModifier}: ${signature.parameterType}`;
-
-        const paramUsage =
-          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
-            ? signature.parameterUsage
-            : signature.parameterUsage || "params";
-
-        lines.push(`export const ${func.name} = (${paramDecl}) => {`);
-        lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
-            \`${route}\`,
-            "${method}",
-            ${paramUsage} as SafeRequestData<${signature.parameterType}>
-          );`
-        );
-        lines.push("};");
       } else {
-        // POST, PUT, PATCH methods
-        const allOptional = func.parameters.every((p) => p.optional);
-        const optionalModifier =
-          allOptional && !signature.parameterType.includes("|") ? "?" : "";
+        // All other methods (including GET) - use JSON body
+        const allOptional = clientParams.length > 0 && clientParams.every((p) => p.optional);
+        const optionalModifier = allOptional && !clientSignature.parameterType.includes("|") ? "?" : "";
 
-        const paramDecl =
-          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
-            ? `${func.parameters[0].name}${optionalModifier}: ${signature.parameterType}`
-            : `params${optionalModifier}: ${signature.parameterType}`;
-
-        const paramUsage =
-          func.parameters.length === 1 && !isObjectDestructured(func.parameters[0])
-            ? signature.parameterUsage
-            : signature.parameterUsage || "params";
-
-        lines.push(`export const ${func.name} = (${paramDecl}) => {`);
-        lines.push(
-          `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
-            \`${route}\`,
-            "${method}",
-            ${paramUsage} as SafeRequestData<${signature.parameterType}>
-          );`
-        );
+        if (clientParams.length === 0) {
+          // No parameters
+          lines.push(`export const ${func.name} = (axiosConfig?: AxiosRequestConfig) => {`);
+          lines.push(
+            `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+        \`${route}\`,
+        "${method}",
+        undefined as SafeRequestData<void>,
+        axiosConfig
+      );`
+          );
+        } else if (clientParams.length === 1 && !isObjectDestructured(clientParams[0])) {
+          // Single parameter - wrap in object for consistent body structure
+          const param = clientParams[0];
+          lines.push(`export const ${func.name} = (${param.name}${optionalModifier}: ${param.type}, axiosConfig?: AxiosRequestConfig) => {`);
+          lines.push(
+            `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+        \`${route}\`,
+        "${method}",
+        { ${param.name} } as SafeRequestData<{ ${param.name}: ${param.type} }>,
+        axiosConfig
+      );`
+          );
+        } else {
+          // Multiple parameters or object destructured
+          lines.push(`export const ${func.name} = (params${optionalModifier}: ${clientSignature.parameterType}, axiosConfig?: AxiosRequestConfig) => {`);
+          lines.push(
+            `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
+        \`${route}\`,
+        "${method}",
+        params as SafeRequestData<${clientSignature.parameterType}>,
+        axiosConfig
+      );`
+          );
+        }
         lines.push("};");
       }
 
@@ -501,11 +506,11 @@ export function generateQuickwireFile(
     });
 
     const success = safeWriteFile(quickwireFilePath, lines.join("\n"), filePath);
-    
+
     if (success) {
       console.log(`✅ Generated quickwire file with ${functionsGenerated} functions: ${path.relative(process.cwd(), quickwireFilePath)}`);
     }
-    
+
     return success;
   } catch (error) {
     console.error(`❌ Failed to generate quickwire file for ${filePath}:`, error);
@@ -513,11 +518,11 @@ export function generateQuickwireFile(
   }
 }
 
-export function generateApiRoutesForFile(
-  filePath: string
-): Record<string, { route: string; method: string }> {
+export function generateApiRoutesForFile(filePath: string, moduleExports?: ModuleExports): Record<string, { route: string; method: string }> {
   const relativePath = sanitizeFilePath(path.relative(CONFIG.backendDir, filePath));
-  const moduleExports = analyzeModuleExports(filePath);
+  if (!moduleExports) {
+    moduleExports = analyzeModuleExports(filePath);
+  }
   const endpoints: Record<string, { route: string; method: string }> = {};
 
   if (moduleExports.functions.length === 0) {
@@ -532,10 +537,40 @@ export function generateApiRoutesForFile(
 
       const apiFilePath = path.join(CONFIG.apiDir, route, CONFIG.apiRouteTemplate);
 
+      // Filter out context parameters to get only client parameters
+      const clientParams = func.parameters.filter(p => {
+        const type = p.type.toLowerCase();
+        const name = p.name.toLowerCase();
+        return !(
+          type.includes('quickwirecontext') ||
+          type.includes('requestcontext') ||
+          type.includes('context') ||
+          name.includes('context') ||
+          name === 'ctx' ||
+          name === 'req' ||
+          name === 'request'
+        );
+      });
+
+      // Check if function has context parameter and find its position
+      const contextParamIndex = func.parameters.findIndex(p => {
+        const type = p.type.toLowerCase();
+        const name = p.name.toLowerCase();
+        return (
+          type.includes('quickwirecontext') ||
+          type.includes('requestcontext') ||
+          type.includes('context') ||
+          name.includes('context') ||
+          name === 'ctx'
+        );
+      });
+      
+      const hasContextParam = contextParamIndex !== -1;
+
       let parameterHandling = "";
       let functionCallParams: string[] = [];
 
-      const fileParams = func.parameters.filter((p) => {
+      const fileParams = clientParams.filter((p) => {
         const type = p.type.toLowerCase();
         return (
           type === "file" ||
@@ -552,16 +587,9 @@ export function generateApiRoutesForFile(
         );
       });
 
-      if (method === "GET") {
-        parameterHandling = `
-  const { searchParams } = new URL(req.url);
-${func.parameters
-  .map((p) => `  const ${p.name} = searchParams.get("${p.name}") as ${p.type.includes('?') ? p.type : `${p.type} | null`};`)
-  .join("\n")}
-        `.trim();
-
-        functionCallParams = func.parameters.map((p) => p.name);
-      } else if (fileParams.length > 0) {
+      // Unified body parameter handling for ALL HTTP methods (including GET)
+      if (fileParams.length > 0) {
+        // File upload handling remains the same
         parameterHandling = `
   type ParsedValue = string | number | boolean | object | File;
   
@@ -637,29 +665,50 @@ ${func.parameters
     value instanceof File ? \`File(\${value.name})\` : value, 2));
 `;
 
-        if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
-          functionCallParams = [`params as Parameters<typeof ${func.name}>[0]`];
+        // Build function call parameters with context in correct position
+        functionCallParams = [];
+        
+        if (clientParams.length === 1 && isObjectDestructured(clientParams[0])) {
+          // Single object parameter
+          for (let i = 0; i < func.parameters.length; i++) {
+            if (i === contextParamIndex) {
+              functionCallParams.push("context");
+            } else {
+              functionCallParams.push(`params as Parameters<typeof ${func.name}>[${i}]`);
+            }
+          }
         } else {
-          functionCallParams = func.parameters.map((p, index) => `params.${p.name} as Parameters<typeof ${func.name}>[${index}]`);
+          // Multiple parameters
+          let clientParamIndex = 0;
+          for (let i = 0; i < func.parameters.length; i++) {
+            if (i === contextParamIndex) {
+              functionCallParams.push("context");
+            } else {
+              functionCallParams.push(`params.${clientParams[clientParamIndex].name}  as Parameters<typeof ${func.name}>[${i}]`);
+              clientParamIndex++;
+            }
+          }
         }
+        
       } else {
-        // Generate specific interface for the request body based on function parameters
+        // JSON body handling for ALL HTTP methods (including GET)
+        // Generate specific interface for the request body based on client parameters only
         let bodyInterface = "";
-        if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
+        if (clientParams.length === 0) {
+          // No client parameters
+          bodyInterface = "  interface RequestBody {\n    [key: string]: never;\n  }";
+        } else if (clientParams.length === 1 && isObjectDestructured(clientParams[0])) {
           // Single object parameter - use the exact type
-          const param = func.parameters[0];
+          const param = clientParams[0];
           bodyInterface = `  type RequestBody = ${param.type};`;
-        } else if (func.parameters.length > 0) {
+        } else {
           // Multiple parameters - create interface with exact parameter types
-          const paramDeclarations = func.parameters.map(p => 
+          const paramDeclarations = clientParams.map(p =>
             `    ${p.name}${p.optional ? "?" : ""}: ${p.type};`
           ).join("\n");
           bodyInterface = `  interface RequestBody {\n${paramDeclarations}\n  }`;
-        } else {
-          // No parameters
-          bodyInterface = "  interface RequestBody {\n    [key: string]: never;\n  }";
         }
-        
+
         parameterHandling = `
 ${bodyInterface}
   
@@ -677,21 +726,83 @@ ${bodyInterface}
   }
 `;
 
-        if (func.parameters.length === 1 && isObjectDestructured(func.parameters[0])) {
-          functionCallParams = [`body as Parameters<typeof ${func.name}>[0]`];
+        // Build function call parameters with context in correct position
+        functionCallParams = [];
+        
+        if (clientParams.length === 0) {
+          // No client parameters, only context if it exists
+          if (hasContextParam) {
+            functionCallParams.push("context");
+          }
+        } else if (clientParams.length === 1 && !isObjectDestructured(clientParams[0])) {
+          // Single parameter - extract from body object
+          let clientParamIndex = 0;
+          for (let i = 0; i < func.parameters.length; i++) {
+            if (i === contextParamIndex) {
+              functionCallParams.push("context");
+            } else {
+              functionCallParams.push(`body.${clientParams[clientParamIndex].name}`);
+              clientParamIndex++;
+            }
+          }
+        } else if (clientParams.length === 1 && isObjectDestructured(clientParams[0])) {
+          // Single object parameter
+          for (let i = 0; i < func.parameters.length; i++) {
+            if (i === contextParamIndex) {
+              functionCallParams.push("context");
+            } else {
+              functionCallParams.push("body");
+            }
+          }
         } else {
-          functionCallParams = func.parameters.map((p) => `body.${p.name} as Parameters<typeof ${func.name}>[0]`);
+          // Multiple parameters
+          let clientParamIndex = 0;
+          for (let i = 0; i < func.parameters.length; i++) {
+            if (i === contextParamIndex) {
+              functionCallParams.push("context");
+            } else {
+              functionCallParams.push(`body.${clientParams[clientParamIndex].name}`);
+              clientParamIndex++;
+            }
+          }
         }
       }
 
       const functionCall = `${func.isAsync ? "await " : ""}${func.name}(${functionCallParams.join(", ")})`;
 
-      const handlerCode = `import { ${func.name} } from "@/backend/${relativePath.replace(/\.[tj]s$/, "")}";
-import { NextResponse } from "next/server";
+      // Only generate context setup if the function has a QuickwireContext parameter
+      const contextSetup = hasContextParam ? `
+    // Setup request context for backend function
+    const context = {
+      req,
+      headers: Object.fromEntries(req.headers.entries()),
+      cookies: Object.fromEntries(
+        req.headers.get('cookie')
+          ?.split(';')
+          ?.map(c => c.trim().split('='))
+          ?.filter(([k, v]) => k && v) || []
+      ),
+      ip: req.headers.get('x-forwarded-for')?.split(',')[0] || 
+          req.headers.get('x-real-ip') || 
+          'unknown',
+      userAgent: req.headers.get('user-agent') || 'unknown'
+    };
+` : '';
+
+      // Extract types from module exports to import them
+      const typeImports = moduleExports.types.map(type => type.name).join(', ');
+      const importStatement = typeImports
+        ? `import { ${func.name}, ${typeImports} } from "@/backend/${relativePath.replace(/\.[tj]s$/, "")}";
+`
+        : `import { ${func.name} } from "@/backend/${relativePath.replace(/\.[tj]s$/, "")}";
+`;
+
+      const handlerCode = `${importStatement}import { NextResponse } from "next/server";
+${hasContextParam ? 'import type { QuickwireContext } from "quickwire/types";' : ''}
 
 export async function ${method}(req: Request) {
   try {
-${parameterHandling}
+${parameterHandling}${contextSetup}
     const result = ${functionCall};
     return NextResponse.json(result ?? null);
   } catch (error) {
@@ -706,7 +817,7 @@ ${parameterHandling}
 `;
 
       const success = safeWriteFile(apiFilePath, handlerCode, filePath);
-      
+
       if (!success) {
         console.error(`❌ Failed to generate API route for ${func.name}`);
       }
@@ -722,7 +833,7 @@ ${parameterHandling}
 
 function cleanupOrphanedFiles(): void {
   console.log("🧹 Starting cleanup of orphaned files...");
-  
+
   const cleanupDirs = [CONFIG.quickwireDir, CONFIG.apiDir];
   let removedCount = 0;
 
@@ -741,7 +852,7 @@ function cleanupOrphanedFiles(): void {
 
 function walkAndCleanup(dir: string): number {
   let removedCount = 0;
-  
+
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -750,7 +861,7 @@ function walkAndCleanup(dir: string): number {
 
       if (entry.isDirectory()) {
         removedCount += walkAndCleanup(fullPath);
-        
+
         // Try to remove empty directory
         try {
           const isEmpty = fs.readdirSync(fullPath).length === 0;
@@ -797,7 +908,7 @@ export function processBackendFile(filePath: string): boolean {
     const oldSet = backendToGenerated.get(filePath);
     if (oldSet) {
       console.log(`🧹 Cleaning up ${oldSet.size} old files for ${path.relative(process.cwd(), filePath)}`);
-      
+
       for (const oldFile of oldSet) {
         safeRemoveFile(oldFile);
       }
@@ -812,8 +923,8 @@ export function processBackendFile(filePath: string): boolean {
 
     const beforeSize = generatedFiles.size;
 
-    const endpoints = generateApiRoutesForFile(filePath);
-    const quickwireSuccess = generateQuickwireFile(filePath, endpoints);
+    const endpoints = generateApiRoutesForFile(filePath, moduleExports);
+    const quickwireSuccess = generateQuickwireFile(filePath, endpoints, moduleExports);
 
     if (!quickwireSuccess) {
       console.warn(`⚠️ Failed to generate quickwire file for ${filePath}`);
@@ -847,7 +958,7 @@ export async function scanAllBackendFunctions(): Promise<void> {
   }
 
   isProcessing = true;
-  
+
   try {
     const now = Date.now();
     const isFullRegen = shouldRegenerateEverything();
@@ -860,12 +971,12 @@ export async function scanAllBackendFunctions(): Promise<void> {
 
     if (isFullRegen) {
       console.log("🔄 Performing full regeneration...");
-      
+
       // Clear tracking maps but keep file metadata for cleanup
       const oldGenerated = new Map(generatedFiles);
       generatedFiles.clear();
       backendToGenerated.clear();
-      
+
       if (now - lastFullScan > CONFIG.performance.cacheExpiryMs) {
         fileCache.clear();
         console.log("🗑️ Cleared file cache due to expiry");
@@ -880,7 +991,7 @@ export async function scanAllBackendFunctions(): Promise<void> {
       const genSet = backendToGenerated.get(deletedPath);
       if (genSet) {
         console.log(`🗑️ Cleaning up ${genSet.size} files for deleted source: ${path.relative(process.cwd(), deletedPath)}`);
-        
+
         for (const f of genSet) {
           safeRemoveFile(f);
         }
@@ -926,7 +1037,7 @@ export async function scanAllBackendFunctions(): Promise<void> {
 
           try {
             console.log(`🔧 Processing: ${path.relative(process.cwd(), filePath)}`);
-            
+
             if (processBackendFile(filePath)) {
               processedCount++;
             } else {
@@ -994,7 +1105,7 @@ export async function scanAllBackendFunctions(): Promise<void> {
       if (Object.keys(methodCounts).length > 0) {
         console.log("📊 HTTP Method Distribution:");
         Object.entries(methodCounts)
-          .sort(([,a], [,b]) => b - a)
+          .sort(([, a], [, b]) => b - a)
           .forEach(([method, count]) => {
             console.log(`   ${method}: ${count} endpoints`);
           });
@@ -1024,11 +1135,11 @@ export function getGenerationStats(): {
     bySourceFile[sourceRelative] = (bySourceFile[sourceRelative] || 0) + 1;
 
     const age = now - metadata.generatedAt;
-    
+
     if (!oldestFile || age > oldestFile.age) {
       oldestFile = { path: path.relative(process.cwd(), filePath), age };
     }
-    
+
     if (!newestFile || age < newestFile.age) {
       newestFile = { path: path.relative(process.cwd(), filePath), age };
     }
@@ -1059,6 +1170,7 @@ function generateParameterSchema(parameters: ExportedFunction["parameters"]): Op
   if (parameters.length === 0) {
     return null;
   }
+  console.log(parameters)
 
   if (parameters.length === 1) {
     const param = parameters[0];
@@ -1350,11 +1462,11 @@ function generateApiDocumentation(): OpenApiSpec {
     },
     servers: [
       {
-        url: process.env.NODE_ENV === "production" 
-          ? process.env.NEXT_PUBLIC_API_URL || "https://your-domain.com" 
+        url: process.env.NODE_ENV === "production"
+          ? process.env.NEXT_PUBLIC_API_URL || "https://your-domain.com"
           : "http://localhost:3000",
-        description: process.env.NODE_ENV === "production" 
-          ? "Production server" 
+        description: process.env.NODE_ENV === "production"
+          ? "Production server"
           : "Development server",
       },
     ],
@@ -1373,7 +1485,7 @@ function generateApiDocumentation(): OpenApiSpec {
     if (!openApiSpec.paths[doc.path]) {
       openApiSpec.paths[doc.path] = {};
     }
-    
+
     openApiSpec.paths[doc.path][doc.method] = {
       summary: doc.summary,
       description: doc.description,
@@ -1385,9 +1497,9 @@ function generateApiDocumentation(): OpenApiSpec {
 
     doc.tags.forEach((tag) => {
       if (!openApiSpec.tags.find(t => t.name === tag)) {
-        openApiSpec.tags.push({ 
-          name: tag, 
-          description: `Operations for ${tag}` 
+        openApiSpec.tags.push({
+          name: tag,
+          description: `Operations for ${tag}`
         });
       }
     });
@@ -1399,10 +1511,10 @@ function generateApiDocumentation(): OpenApiSpec {
 function generateDocumentationFiles(): void {
   try {
     console.log("📚 Generating API documentation...");
-    
+
     const apiDocSpec = generateApiDocumentation();
     const docsDir = path.join(CONFIG.apiDir, "quickwire-docs");
-    
+
     if (!ensureDirectoryExists(docsDir)) {
       console.error("❌ Failed to create documentation directory");
       return;
@@ -1449,7 +1561,7 @@ export async function GET() {
   </head>
   <body>
     <div class="custom-header">
-      <h1>🚀 Quickwire API Documentation</h1>
+      <h1> Quickwire API Documentation</h1>
       <p>Generated at: ${new Date().toISOString()}</p>
     </div>
     <div id="swagger-ui"></div>
@@ -1567,28 +1679,28 @@ export function validateGeneratedFiles(): { valid: number; invalid: number; miss
 export function recoverFromCorruption(): boolean {
   try {
     console.log("🔧 Attempting to recover from file corruption...");
-    
+
     const validation = validateGeneratedFiles();
     console.log(`📊 Validation results: ${validation.valid} valid, ${validation.invalid} invalid, ${validation.missing} missing`);
 
     if (validation.invalid > 0 || validation.missing > 0) {
       console.log("🔄 Forcing full regeneration to recover...");
-      
+
       // Clear all tracking and force regeneration
       generatedFiles.clear();
       backendToGenerated.clear();
       changedFiles.clear();
       deletedFiles.clear();
       lastFullScan = 0;
-      
+
       // Add all backend files as changed to trigger regeneration
       function addAllBackendFiles(dir: string): void {
         if (!fs.existsSync(dir)) return;
-        
+
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
           const filePath = path.join(dir, entry.name);
-          
+
           if (entry.isDirectory()) {
             if (!["node_modules", ".git", ".next", "dist", "build"].includes(entry.name)) {
               addAllBackendFiles(filePath);
@@ -1598,10 +1710,10 @@ export function recoverFromCorruption(): boolean {
           }
         }
       }
-      
+
       addAllBackendFiles(CONFIG.backendDir);
       console.log(`📝 Marked ${changedFiles.size} backend files for regeneration`);
-      
+
       return true;
     }
 

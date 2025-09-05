@@ -1,3 +1,5 @@
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+
 export function convertToFormData(obj: Record<string, unknown>, formData?: FormData, parentKey?: string): FormData {
   if (!formData) {
     formData = new FormData();
@@ -48,48 +50,42 @@ export function convertToFormData(obj: Record<string, unknown>, formData?: FormD
   return formData;
 }
 
-export interface RequestConfig {
-  headers?: Record<string, string>;
-  timeout?: number;
-}
-
 type RequestData = FormData | Record<string, unknown> | string | number | boolean | null | undefined;
 
 export async function makeQuickwireRequest<T>(
   url: string,
   method: string = 'POST',
   data?: RequestData,
-  config?: RequestConfig
+  axiosConfig?: AxiosRequestConfig
 ): Promise<T> {
-  const requestInit: RequestInit = {
-    method,
+  const config: AxiosRequestConfig = {
+    method: method.toLowerCase(),
+    url,
     headers: {
       'Accept': 'application/json',
-      ...config?.headers,
+      ...axiosConfig?.headers,
     },
+    ...axiosConfig,
   };
 
   // Handle different data types
   if (data !== undefined) {
     if (data instanceof FormData) {
-      // Don't set Content-Type for FormData - browser will set it with boundary
-      requestInit.body = data;
+      // Don't set Content-Type for FormData - axios will set it with boundary
+      config.data = data;
+      // Remove Content-Type if it was set, let axios handle FormData
+      if (config.headers && 'Content-Type' in config.headers) {
+        delete config.headers['Content-Type'];
+      }
     } else if (data && typeof data === 'object') {
-      requestInit.headers = {
-        ...requestInit.headers,
+      config.headers = {
+        ...config.headers,
         'Content-Type': 'application/json',
       };
-      requestInit.body = JSON.stringify(data);
-    } else if (typeof data === 'string') {
-      requestInit.body = data;
+      config.data = data;
+    } else if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+      config.data = data;
     }
-  }
-
-  // Add timeout support
-  const controller = new AbortController();
-  if (config?.timeout) {
-    setTimeout(() => controller.abort(), config.timeout);
-    requestInit.signal = controller.signal;
   }
 
   try {
@@ -103,40 +99,24 @@ export async function makeQuickwireRequest<T>(
       console.log('📦 Request body:', data);
     }
 
-    const response = await fetch(url, requestInit);
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      
-      try {
-        const errorData = await response.json() as { error?: string };
-        if (errorData && typeof errorData === 'object' && errorData.error) {
-          errorMessage = errorData.error;
-        }
-      } catch {
-        // If we can't parse the error as JSON, use the status text
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const result = await response.json();
-      console.log(`✅ ${method} ${url} - Success`, result);
-      return result as T;
-    } else {
-      const result = await response.text();
-      console.log(`✅ ${method} ${url} - Success (text)`, result);
-      return result as unknown as T;
-    }
+    const response: AxiosResponse<T> = await axios(config);
+    
+    console.log(`✅ ${method} ${url} - Success`, response.data);
+    return response.data;
   } catch (error) {
     console.error(`❌ ${method} ${url} - Error:`, error);
     
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        throw new Error(`Request timeout after ${config?.timeout}ms`);
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED') {
+        throw new Error(`Request timeout after ${config.timeout}ms`);
       }
+      
+      const errorMessage = error.response?.data?.error || 
+                          error.response?.statusText || 
+                          error.message || 
+                          'Request failed';
+      
+      throw new Error(`HTTP ${error.response?.status || 'Unknown'}: ${errorMessage}`);
     }
     
     throw error;

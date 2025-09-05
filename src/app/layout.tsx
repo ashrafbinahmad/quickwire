@@ -42,19 +42,19 @@ export default function RootLayout({
                   href="/"
                   className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
-                  Contacts
+                  Home
                 </Link>
                 <Link
-                  href="/search"
+                  href="/auth"
                   className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
-                  Search Demo
+                  Auth
                 </Link>
                 <Link
-                  href="/file"
+                  href="/dashboard"
                   className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
-                  File Upload
+                  Dashboard
                 </Link>
                 <a
                   href="/api/quickwire-docs"

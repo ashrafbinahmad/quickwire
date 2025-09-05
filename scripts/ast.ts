@@ -89,7 +89,10 @@ export function analyzeFunctionDeclaration(
   const isAsync =
     node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) || false;
 
-  return { name, type: "function", parameters, returnType, isAsync, node };
+  // Check if function needs request context
+  const needsContext = detectContextUsage(node, parameters);
+
+  return { name, type: "function", parameters, returnType, isAsync, needsContext, node };
 }
 
 export function analyzeVariableStatement(
@@ -123,12 +126,16 @@ export function analyzeVariableStatement(
             (m) => m.kind === ts.SyntaxKind.AsyncKeyword
           ) || false;
 
+        // Check if function needs request context
+        const needsContext = detectContextUsage(funcNode, parameters);
+
         funcs.push({
           name: decl.name.text,
           type,
           parameters,
           returnType,
           isAsync,
+          needsContext,
           node: decl,
         });
       }
@@ -182,15 +189,7 @@ export function analyzeTypeDeclaration(node: ts.Node): ExportedType | null {
 export function detectHttpMethod(functionName: string, parameters?: ExportedFunction["parameters"]): string {
   const lowerName = functionName.toLowerCase();
   
-  // If we have complex object parameters, prefer POST regardless of function name
-  if (parameters && parameters.length === 1) {
-    const param = parameters[0];
-    // Check if the parameter is an object type (contains : or starts with {)
-    if (param.type.includes(':') || param.type.startsWith('{')) {
-      return 'POST';
-    }
-  }
-  
+  // First check function name for HTTP method detection
   for (const [method, prefixes] of Object.entries(CONFIG.httpMethods)) {
     for (const prefix of prefixes) {
       if (lowerName.startsWith(prefix)) {
@@ -199,5 +198,66 @@ export function detectHttpMethod(functionName: string, parameters?: ExportedFunc
     }
   }
   
+  // If no method matches, default to POST
   return 'POST';
+}
+
+// New function to detect if a function needs request context
+export function detectContextUsage(
+  node: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  parameters: ExportedFunction["parameters"]
+): boolean {
+  // Check if any parameter is of type QuickwireContext or contains context-related keywords
+  const hasContextParam = parameters.some(param => {
+    const type = param.type.toLowerCase();
+    return (
+      type.includes('quickwirecontext') ||
+      type.includes('context') ||
+      type.includes('request') ||
+      type.includes('req') ||
+      param.name.toLowerCase().includes('context') ||
+      param.name.toLowerCase().includes('req')
+    );
+  });
+
+  if (hasContextParam) return true;
+
+  // Check function body for usage of context-related APIs
+  let needsContext = false;
+  
+  function visitNode(node: ts.Node): void {
+    // Look for property access that suggests context usage
+    if (ts.isPropertyAccessExpression(node)) {
+      const text = node.getText();
+      if (
+        text.includes('headers') ||
+        text.includes('cookies') ||
+        text.includes('userAgent') ||
+        text.includes('ip') ||
+        text.includes('req.') ||
+        text.includes('request.')
+      ) {
+        needsContext = true;
+      }
+    }
+    
+    // Look for calls to context-related functions
+    if (ts.isCallExpression(node)) {
+      const text = node.getText();
+      if (
+        text.includes('getHeader') ||
+        text.includes('getCookie') ||
+        text.includes('getClientIP')
+      ) {
+        needsContext = true;
+      }
+    }
+
+    if (!needsContext) {
+      ts.forEachChild(node, visitNode);
+    }
+  }
+
+  visitNode(node);
+  return needsContext;
 }

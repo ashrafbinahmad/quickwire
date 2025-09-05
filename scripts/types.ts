@@ -1,4 +1,14 @@
 import ts from "typescript";
+import { NextRequest, NextResponse } from "next/server";
+
+export interface QuickwireContext {
+  req: NextRequest;
+  res?: NextResponse;
+  headers: Record<string, string>;
+  cookies: Record<string, string>;
+  ip?: string;
+  userAgent?: string;
+}
 
 export interface ExportedFunction {
   name: string;
@@ -7,6 +17,7 @@ export interface ExportedFunction {
   returnType?: string;
   isAsync?: boolean;
   httpMethod?: string;
+  needsContext?: boolean; // New flag to indicate if function needs request context
   node: ts.Node;
 }
 

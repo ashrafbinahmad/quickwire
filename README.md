@@ -74,6 +74,44 @@ Add TypeScript path mapping to your `tsconfig.json`:
 
 **Result**: 70% less code, 100% type safety, zero maintenance, automatic Swagger documentation
 
+## 🔐 Authentication & Authorization
+
+Quickwire includes a complete authentication system with JWT tokens and role-based access control:
+
+### Features
+
+- **User Authentication**: Signup and login with JWT tokens
+- **Role-Based Access**: USER and ADMIN roles with appropriate permissions
+- **Protected Routes**: Client-side protection for authenticated pages
+- **Todo Management**: Users can only see/edit their own todos, admins can manage all
+- **Admin Panel**: Dedicated interface for system administration
+
+### Authentication API
+
+- `signup({ name, email, password })` - Create new user account
+- `login({ email, password })` - Authenticate user and return JWT token
+- `getProfile()` - Get authenticated user profile
+- `updateProfile({ name?, email? })` - Update user profile
+- `changePassword({ currentPassword, newPassword })` - Change user password
+
+### Todo API
+
+- `getTodos({ completed? })` - Get user's todos (users only see their own)
+- `getAllTodos({ userId?, completed? })` - Get all todos (admin only)
+- `createTodo({ title, description?, userId? })` - Create todo (users create for themselves, admins can create for others)
+- `updateTodo({ id, title?, description?, completed? })` - Update todo (users can only update their own)
+- `deleteTodo({ id })` - Delete todo (users can only delete their own)
+- `toggleTodo({ id })` - Toggle todo completion status
+
+### Admin API
+
+- `getUsers({ role? })` - Get all users (admin only)
+- `getUserDetails({ id })` - Get detailed user information (admin only)
+- `createUser({ name, email, password, role? })` - Create user (admin only)
+- `updateUser({ id, name?, email?, role? })` - Update user (admin only)
+- `deleteUser({ id })` - Delete user (admin only)
+- `getDashboardStats()` - Get system statistics (admin only)
+
 ## 📝 Integration Example
 
 ### Step 1: Write Your Backend Function
@@ -149,12 +187,26 @@ npm install quickwire --save-dev
 
 # 4. Update package.json scripts (see above)
 
-# 5. Start development
+# 5. Set up environment variables
+# Copy .env.example to .env and update values
+
+# 6. Run database migrations
+npx prisma migrate dev
+
+# 7. Seed the database with demo data
+npm run seed
+
+# 8. Start development
 npm run dev
 
-# 6. Write functions in src/backend/
-# 7. Import from quickwired/* in your components
+# 9. Write functions in src/backend/
+# 10. Import from quickwired/* in your components
 ```
+
+## 🔐 Demo Credentials
+
+- **Admin User**: admin@example.com / password123
+- **Regular User**: user@example.com / password123
 
 ## 📊 Benefits
 

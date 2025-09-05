@@ -8,11 +8,42 @@ datasource db {
 }
 
 model Contact {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  phone       String?
+  isDeleted   Boolean  @default(false)
+  isPublic    Boolean  @default(false)
+  createdByIP String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
   id        String   @id @default(uuid())
   name      String
   email     String   @unique
-  phone     String?
-  isDeleted Boolean  @default(false)
+  password  String
+  role      UserRole @default(USER)
+  todos     Todo[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Todo {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([title, userId])
 }
