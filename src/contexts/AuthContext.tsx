@@ -1,5 +1,6 @@
 'use client';
 
+import { login, signup } from 'quickwired/auth';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export interface User {
@@ -58,22 +59,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login_ = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const response = await login({ email, password }); 
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Login failed');
+      if (!response) {
+        const error = response;
+        throw new Error(error || 'Login failed');
       }
 
-      const data = await response.json();
+      const data = response;
       
       setUser(data.user);
       setToken(data.token);
@@ -86,22 +81,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const signup = async (name: string, email: string, password: string) => {
+  const signup_ = async (name: string, email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password }),
-      });
+      const response = await signup({ name, email, password });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Signup failed');
+      if (!response) {
+        const error =  response
+        throw new Error(error || 'Signup failed');
       }
 
-      const data = await response.json();
+      const data = response
       
       setUser(data.user);
       setToken(data.token);
@@ -124,8 +113,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     token,
-    login,
-    signup,
+    login : login_,
+    signup : signup_,
     logout,
     isLoading,
     isAuthenticated: !!user && !!token,

@@ -58,6 +58,7 @@ export async function makeQuickwireRequest<T>(
   data?: RequestData,
   axiosConfig?: AxiosRequestConfig
 ): Promise<T> {
+  // alert(url + JSON.stringify(data));
   const config: AxiosRequestConfig = {
     method: method.toLowerCase(),
     url,

@@ -482,7 +482,7 @@ export function generateQuickwireFile(
             `  return makeQuickwireRequest<UnwrapPromise<ReturnType<typeof ${func.name}Internal>>>(
         \`${route}\`,
         "${method}",
-        { ${param.name} } as SafeRequestData<{ ${param.name}: ${param.type} }>,
+        ${param.name} as unknown as RequestData,
         axiosConfig
       );`
           );
@@ -564,7 +564,7 @@ export function generateApiRoutesForFile(filePath: string, moduleExports?: Modul
           name === 'ctx'
         );
       });
-      
+
       const hasContextParam = contextParamIndex !== -1;
 
       let parameterHandling = "";
@@ -667,7 +667,7 @@ export function generateApiRoutesForFile(filePath: string, moduleExports?: Modul
 
         // Build function call parameters with context in correct position
         functionCallParams = [];
-        
+
         if (clientParams.length === 1 && isObjectDestructured(clientParams[0])) {
           // Single object parameter
           for (let i = 0; i < func.parameters.length; i++) {
@@ -689,46 +689,46 @@ export function generateApiRoutesForFile(filePath: string, moduleExports?: Modul
             }
           }
         }
-        
+
       } else {
         // JSON body handling for ALL HTTP methods (including GET)
         // Generate specific interface for the request body based on client parameters only
         let bodyInterface = "";
         if (clientParams.length === 0) {
           // No client parameters
-          bodyInterface = "  interface RequestBody {\n    [key: string]: never;\n  }";
+          // bodyInterface = "  interface RequestBody {\n    [key: string]: never;\n  }";
         } else if (clientParams.length === 1 && isObjectDestructured(clientParams[0])) {
           // Single object parameter - use the exact type
-          const param = clientParams[0];
-          bodyInterface = `  type RequestBody = ${param.type};`;
+          // const param = clientParams[0];
+          // bodyInterface = `  type RequestBody = ${param.type};`;
         } else {
           // Multiple parameters - create interface with exact parameter types
-          const paramDeclarations = clientParams.map(p =>
-            `    ${p.name}${p.optional ? "?" : ""}: ${p.type};`
-          ).join("\n");
-          bodyInterface = `  interface RequestBody {\n${paramDeclarations}\n  }`;
+          // const paramDeclarations = clientParams.map(p =>
+          //   `    ${p.name}${p.optional ? "?" : ""}: ${p.type};`
+          // ).join("\n");
+          // bodyInterface = `  interface RequestBody {\n${paramDeclarations}\n  }`;
         }
 
         parameterHandling = `
 ${bodyInterface}
   
-  let body: RequestBody;
+  let body;
   try {
     const contentType = req.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      body = await req.json() as RequestBody;
+      body = await req.json();
     } else {
       const textBody = await req.text();
-      body = textBody ? JSON.parse(textBody) as RequestBody : {} as RequestBody;
+      body = textBody ? JSON.parse(textBody) : {};
     }
   } catch (error) {
-    body = {} as RequestBody;
+    body = {};
   }
 `;
 
         // Build function call parameters with context in correct position
         functionCallParams = [];
-        
+
         if (clientParams.length === 0) {
           // No client parameters, only context if it exists
           if (hasContextParam) {
@@ -741,7 +741,7 @@ ${bodyInterface}
             if (i === contextParamIndex) {
               functionCallParams.push("context");
             } else {
-              functionCallParams.push(`body.${clientParams[clientParamIndex].name}`);
+              functionCallParams.push(`body${clientParams.length === 1 ? "" : "." + clientParams[clientParamIndex].name}`);
               clientParamIndex++;
             }
           }
@@ -761,14 +761,14 @@ ${bodyInterface}
             if (i === contextParamIndex) {
               functionCallParams.push("context");
             } else {
-              functionCallParams.push(`body.${clientParams[clientParamIndex].name}`);
+              functionCallParams.push(`body.${clientParams.length === 1 ? "" : clientParams[clientParamIndex].name}`);
               clientParamIndex++;
             }
           }
         }
       }
 
-      const functionCall = `${func.isAsync ? "await " : ""}${func.name}(${functionCallParams.join(", ")})`;
+      const functionCall = `${func.isAsync ? "await " : ""}${func.name}(${functionCallParams.map((param, index) => `${param} as unknown as Parameters<typeof ${func.name}>[${index}]`).join(", ")})`;
 
       // Only generate context setup if the function has a QuickwireContext parameter
       const contextSetup = hasContextParam ? `
