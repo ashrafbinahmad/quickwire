@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export interface QuickwireContext {
   req: NextRequest;
-  res?: NextResponse;
-  headers: Record<string, string>;
-  cookies: Record<string, string>;
-  ip?: string;
-  userAgent?: string;
+  // res?: NextResponse;
+  getHeaders: () => Record<string, string>;
+  getCookies: () => Record<string, string>;
+  getIp: () => string;
+  getUserAgent: () => string;
 }
 
 export interface ExportedFunction {

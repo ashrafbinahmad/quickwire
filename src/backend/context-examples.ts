@@ -1,6 +1,7 @@
 // Example: Backend functions with context access
 import { prisma } from "@/lib/prisma";
-import { QuickwireContext, getBearerToken, getClientIP, requireAuth } from "@/lib/quickwire-context";
+import {  getBearerToken, getClientIP, requireAuth } from "@/lib/quickwire-context";
+import { QuickwireContext } from "quickwire/types";
 
 // Example 1: Simple function without context (existing pattern - unchanged)
 export async function listPublicContacts() {
@@ -49,8 +50,8 @@ export async function processWebhook(
   params: { payload: string },
   context: QuickwireContext
 ) {
-  const signature = context.headers['x-webhook-signature'];
-  const timestamp = context.headers['x-webhook-timestamp'];
+  const signature = context.getHeaders()['x-webhook-signature'];
+  const timestamp = context.getHeaders()['x-webhook-timestamp'];
   
   if (!signature || !timestamp) {
     throw new Error('Missing webhook headers');
@@ -67,7 +68,7 @@ export async function getUserProfile(
   params: { userId?: string },
   context: QuickwireContext
 ) {
-  const sessionId = context.cookies['session-id'];
+  const sessionId = context.getCookies()['session-id'];
   const userId = params.userId || getUserIdFromSession(sessionId);
   
   if (!userId) {

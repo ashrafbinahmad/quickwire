@@ -1,7 +1,7 @@
 // Admin backend functions for user management
 import { prisma } from '@/lib/prisma';
-import { QuickwireContext } from '@/lib/quickwire-context';
 import { requireAdmin, hashPassword } from '@/lib/auth';
+import { QuickwireContext } from 'quickwire/types';
 
 export interface UserWithStats {
   id: string;

@@ -1,29 +1,25 @@
 // Quickwire Context Utilities
 // These utilities provide easy access to request context in backend functions
 
-export interface QuickwireContext {
-  req: Request;
-  headers: Record<string, string>;
-  cookies: Record<string, string>;
-  ip: string;
-  userAgent: string;
-}
+import { QuickwireContext } from "quickwire/types";
+
+
 
 // Helper functions that can be used in backend functions
 export function getHeader(context: QuickwireContext, name: string): string | null {
-  return context.headers[name.toLowerCase()] || null;
+  return context.getHeaders()[name.toLowerCase()] || null;
 }
 
 export function getCookie(context: QuickwireContext, name: string): string | null {
-  return context.cookies[name] || null;
+  return context.getCookies()[name] || null;
 }
 
 export function getClientIP(context: QuickwireContext): string {
-  return context.ip;
+  return context.getIp();
 }
 
 export function getUserAgent(context: QuickwireContext): string {
-  return context.userAgent;
+  return context.getUserAgent();
 }
 
 export function getBearerToken(context: QuickwireContext): string | null {

@@ -1,7 +1,7 @@
 // Todo backend functions with role-based access control
 import { prisma } from '@/lib/prisma';
-import { QuickwireContext } from '@/lib/quickwire-context';
 import { getAuthenticatedUser, requireAdmin } from '@/lib/auth';
+import { QuickwireContext } from 'quickwire/types';
 
 export interface Todo {
   id: string;

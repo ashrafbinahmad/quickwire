@@ -1,11 +1,11 @@
 export async function uploadFile(
-  image: File[],
+  file: File,
   name: string
 ): Promise<{ filename: string;}> {
   console.log(
-    `Received file: ${image.length}`
+    `Received file: ${file.name}`
   );
-  return { filename: image[0].name };
+  return { filename: file.name };
 }
 
 export async function createFile( params: {files: File[], inner: {name: string, worked: boolean} }) {

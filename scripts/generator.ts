@@ -775,17 +775,17 @@ ${bodyInterface}
     // Setup request context for backend function
     const context = {
       req,
-      headers: Object.fromEntries(req.headers.entries()),
-      cookies: Object.fromEntries(
+      getHeaders: () => Object.fromEntries(req.headers.entries()),
+      getCookies: () => Object.fromEntries(
         req.headers.get('cookie')
           ?.split(';')
           ?.map(c => c.trim().split('='))
           ?.filter(([k, v]) => k && v) || []
       ),
-      ip: req.headers.get('x-forwarded-for')?.split(',')[0] || 
+      getIp: () => req.headers.get('x-forwarded-for')?.split(',')[0] || 
           req.headers.get('x-real-ip') || 
           'unknown',
-      userAgent: req.headers.get('user-agent') || 'unknown'
+      getUserAgent: () => req.headers.get('user-agent') || 'unknown'
     };
 ` : '';
 

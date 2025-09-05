@@ -1,7 +1,8 @@
 // Authentication utilities for JWT and password hashing
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { QuickwireContext, getHeader } from '@/lib/quickwire-context';
+import { getHeader } from '@/lib/quickwire-context';
+import { QuickwireContext } from 'quickwire/types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = '7d';

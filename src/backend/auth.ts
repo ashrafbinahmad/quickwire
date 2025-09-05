@@ -1,7 +1,7 @@
 // Authentication backend functions
 import { prisma } from '@/lib/prisma';
-import { QuickwireContext } from '@/lib/quickwire-context';
 import { hashPassword, verifyPassword, generateToken, getAuthenticatedUser, JWTPayload } from '@/lib/auth';
+import { QuickwireContext } from 'quickwire/types';
 
 export interface SignupParams {
   name: string;
