@@ -12,3 +12,6 @@ export async function createFile( params: {files: File[], inner: {name: string, 
   console.log(params)
   return params.files.map(i => i.name)
 }
+
+
+

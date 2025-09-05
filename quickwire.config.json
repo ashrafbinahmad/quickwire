@@ -10,7 +10,7 @@
     "enableDocGeneration": true,
     "maxFilesToProcess": 1000,
     "enableIncrementalUpdates": true,
-    "cacheExpiryMs": 1800000
+    "cacheExpiryMs": 18000000
   },
   "httpMethods": {
     "GET": [

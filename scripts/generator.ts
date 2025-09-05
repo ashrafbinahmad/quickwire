@@ -183,6 +183,26 @@ function safeRemoveFile(filePath: string): boolean {
 
       fs.unlinkSync(filePath);
       console.log(`🗑️ Removed: ${path.relative(process.cwd(), filePath)}`);
+
+      // After file removal, check if should delete parent folder (applicable inside API folder)
+      const parentDir = path.dirname(filePath);
+
+      // Define your API folder root path - adjust as per your CONFIG or project structure
+      const apiRoot = path.resolve(CONFIG.apiDir);
+
+      if (parentDir.startsWith(apiRoot)) {
+        // Check if folder is now empty
+        const entries = fs.readdirSync(parentDir);
+        if (entries.length === 0) {
+          // Remove the empty folder
+          try {
+            fs.rmdirSync(parentDir);
+            console.log(`🗑️ Removed empty directory: ${path.relative(process.cwd(), parentDir)}`);
+          } catch (dirRemoveError) {
+            console.warn(`⚠️ Failed to remove directory ${parentDir}:`, dirRemoveError);
+          }
+        }
+      }
     }
 
     generatedFiles.delete(filePath);
@@ -192,6 +212,7 @@ function safeRemoveFile(filePath: string): boolean {
     return false;
   }
 }
+
 
 function safeRemoveDirectory(dirPath: string): boolean {
   try {
@@ -237,10 +258,10 @@ function shouldRegenerateEverything(): boolean {
   const cacheExpired = timeSinceLastScan > CONFIG.performance.cacheExpiryMs;
   const tooManyChanges = changedFiles.size > CONFIG.performance.maxFilesToProcess * 0.5;
 
-  // Log the reason for regeneration
+  // Always log details
   console.log(
-    `🔍 Regeneration check: Changes: ${hasChanges} (${changedFiles.size} files), ` +
-    `Cache expired: ${cacheExpired}, Too many changes: ${tooManyChanges}`
+    `🔍 Regeneration check: Changes present: ${hasChanges} (${changedFiles.size} files), ` +
+    `Deleted files: ${deletedFiles.size}, Cache expired: ${cacheExpired}, Too many changes: ${tooManyChanges}`
   );
 
   if (hasChanges && changedFiles.size > 0) {
@@ -248,7 +269,7 @@ function shouldRegenerateEverything(): boolean {
       .slice(0, 5)
       .map(f => path.relative(process.cwd(), f))
       .join(", ");
-    console.log(`   Recent changes: ${recentChanges}${changedFiles.size > 5 ? '...' : ''}`);
+    console.log(`   Recent changed files: ${recentChanges}${changedFiles.size > 5 ? '...' : ''}`);
   }
 
   if (deletedFiles.size > 0) {
@@ -256,11 +277,20 @@ function shouldRegenerateEverything(): boolean {
       .slice(0, 3)
       .map(f => path.relative(process.cwd(), f))
       .join(", ");
-    console.log(`   Deleted: ${deletedList}${deletedFiles.size > 3 ? '...' : ''}`);
+    console.log(`   Recently deleted files: ${deletedList}${deletedFiles.size > 3 ? '...' : ''}`);
   }
 
-  return hasChanges || cacheExpired || tooManyChanges;
+  // Only trigger full regeneration on cache expiry or too many changes
+  if (cacheExpired || tooManyChanges) {
+    console.log("🔄 Triggering FULL regeneration due to cache expiry or too many changes");
+    return true; // full regeneration
+  }
+
+  // Return false to avoid full regeneration for ordinary changes
+  console.log("⚡ Skipping full regeneration; incremental regeneration can proceed");
+  return false;
 }
+
 
 function isObjectDestructured(param: ExportedFunction["parameters"][0]): boolean {
   return param.type.startsWith("{") && param.type.endsWith("}");
@@ -904,52 +934,59 @@ export function processBackendFile(filePath: string): boolean {
   }
 
   try {
-    // Clean up old generated files for this backend file
-    const oldSet = backendToGenerated.get(filePath);
-    if (oldSet) {
-      console.log(`🧹 Cleaning up ${oldSet.size} old files for ${path.relative(process.cwd(), filePath)}`);
+    // Remove all old generated files for this backend file before generating new ones
+    const oldGeneratedFiles = backendToGenerated.get(filePath);
+    if (oldGeneratedFiles) {
+      console.log(`🧹 Cleaning up ${oldGeneratedFiles.size} old generated files for ${path.relative(process.cwd(), filePath)}`);
 
-      for (const oldFile of oldSet) {
-        safeRemoveFile(oldFile);
+      for (const oldFile of oldGeneratedFiles) {
+        if (safeRemoveFile(oldFile)) {
+          console.log(`🗑️ Removed orphaned generated file: ${path.relative(process.cwd(), oldFile)}`);
+        }
       }
+
       backendToGenerated.delete(filePath);
     }
 
+    // Analyze current exports
     const moduleExports = analyzeModuleExports(filePath);
     if (moduleExports.functions.length === 0) {
-      console.log(`⏭️ No functions found in ${path.relative(process.cwd(), filePath)}`);
+      console.log(`⏭️ No exported functions found in ${path.relative(process.cwd(), filePath)} - skipping generation`);
       return false;
     }
 
-    const beforeSize = generatedFiles.size;
-
+    // Generate API routes and Quickwire files for existing exports
     const endpoints = generateApiRoutesForFile(filePath, moduleExports);
     const quickwireSuccess = generateQuickwireFile(filePath, endpoints, moduleExports);
 
     if (!quickwireSuccess) {
-      console.warn(`⚠️ Failed to generate quickwire file for ${filePath}`);
+      console.warn(`⚠️ Failed to generate quickwire client file for ${path.relative(process.cwd(), filePath)}`);
       return false;
     }
 
     // Track newly generated files for this backend file
-    const newFiles = new Set<string>();
-    for (const [filePath, metadata] of generatedFiles) {
+    const newGeneratedFiles = new Set<string>();
+    for (const [generatedFilePath, metadata] of generatedFiles) {
       if (metadata.sourceFile === filePath) {
-        newFiles.add(filePath);
+        newGeneratedFiles.add(generatedFilePath);
       }
     }
 
-    if (newFiles.size > 0) {
-      backendToGenerated.set(filePath, newFiles);
-      console.log(`📊 Generated ${newFiles.size} files from ${path.relative(process.cwd(), filePath)}`);
+    if (newGeneratedFiles.size > 0) {
+      backendToGenerated.set(filePath, newGeneratedFiles);
+      console.log(`📊 Generated ${newGeneratedFiles.size} files for ${path.relative(process.cwd(), filePath)}`);
+    } else {
+      backendToGenerated.delete(filePath);
+      console.log(`🧹 No files generated; cleared tracking for ${path.relative(process.cwd(), filePath)}`);
     }
 
     return true;
   } catch (error) {
-    console.error(`❌ Error processing ${filePath}:`, error);
+    console.error(`❌ Error processing ${path.relative(process.cwd(), filePath)}:`, error);
     return false;
   }
 }
+
 
 export async function scanAllBackendFunctions(): Promise<void> {
   if (isProcessing) {
@@ -1170,7 +1207,6 @@ function generateParameterSchema(parameters: ExportedFunction["parameters"]): Op
   if (parameters.length === 0) {
     return null;
   }
-  console.log(parameters)
 
   if (parameters.length === 1) {
     const param = parameters[0];
